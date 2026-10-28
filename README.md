@@ -37,9 +37,17 @@ Aucun secret n'est écrit dans le code. Les clés n'ont pas de valeur par défau
 
 ## Corpus
 
-Formats lus : PDF (PyMuPDF et pymupdf4llm), LaTeX, Word (.docx), OpenDocument (.odt), HTML et reStructuredText
-(Pandoc), Markdown et texte. Chaque document est ramené à du Markdown puis découpé par section, en passages
-d'environ 300 mots avec 45 mots de recouvrement. Chaque passage garde le document, le chemin des titres et la page.
+Chaque document est ramené à du Markdown puis découpé par section, en passages d'environ 300 mots avec 45 mots
+de recouvrement. Chaque passage garde le document, le chemin des titres et la page.
+
+| Formats | Lecture |
+| --- | --- |
+| PDF, XPS | PyMuPDF et pymupdf4llm, page par page, OCR Tesseract des pages sans texte (scans) |
+| Images .png .jpg .tif .bmp .gif | OCR Tesseract (français et anglais) |
+| .docx .odt .pptx .xlsx .csv .tsv .rtf .epub .html .tex .rst .ipynb .adoc .org .typ | Pandoc |
+| .doc .xls .ppt .pps .ods .odp .dot | LibreOffice (vers .docx, .xlsx, .pptx) puis Pandoc |
+| .md .txt | Lecture directe, UTF-8 ou Windows-1252 |
+| .yml .json .xml .toml .ini .conf .cfg .sh .ps1 .py .sql .log | Lu comme du code, sous le nom du fichier |
 
 `corpus/inventaire.csv` liste les documents de référence, un par ligne, séparateur `;` :
 
@@ -55,13 +63,23 @@ cd backend
 .\.venv\Scripts\python.exe -m scripts.build_test_corpus                     # régénère les PDF de test
 ```
 
-Un document scanné (sans texte), protégé par mot de passe ou dans un format inconnu est signalé et ignoré.
+Un document protégé par mot de passe, sans texte même après OCR ou dans un format inconnu est signalé et
+ignoré. L'OCR est plus lent (quelques secondes par page) et moins fiable qu'un texte numérique. L'image Docker
+pèse environ 1,6 Go à cause de LibreOffice et de Tesseract.
 Dans un PDF, un petit tableau sans bordure (moins de 5 lignes) est restitué comme du texte dans l'ordre de
 lecture : son contenu est conservé mais la séparation des lignes du tableau est perdue.
 
 ## Démarrer sur le PC
 
-Prérequis installés Python 3.12, Node.js 22, Docker Desktop, Ollama.
+Prérequis installés Python 3.12, Node.js 22, Docker Desktop, Ollama, Tesseract 5 avec le fichier
+`fra.traineddata` dans `C:\Program Files\Tesseract-OCR\tessdata`, LibreOffice. Tesseract et LibreOffice sont
+trouvés automatiquement, `TESSDATA_PATH` et `LIBREOFFICE_PATH` dans `backend/.env` servent seulement s'ils sont
+installés ailleurs.
+
+```powershell
+winget install --id tesseract-ocr.tesseract -e
+winget install --id TheDocumentFoundation.LibreOffice -e
+```
 
 ```powershell
 # Modèles (une seule fois)
@@ -101,7 +119,8 @@ npm run build; npm run lint
 
 ```bash
 cp backend/.env.example backend/.env   # LLM_BASE_URL=http://EMILIA:4000/v1, clé et noms de modèles LiteLLM
-docker compose up -d --build
+docker compose build --pull     # repart de l'image de base Python la plus récente (correctifs de sécurité)
+docker compose up -d
 curl localhost:8090/health
 ```
 

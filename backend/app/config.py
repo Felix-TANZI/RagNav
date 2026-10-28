@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     health_timeout: float = 5.0
     chunk_words: int = Field(default=300, ge=50)
     chunk_overlap_words: int = Field(default=45, ge=0)
+    ocr_language: str = "fra+eng"
+    tessdata_path: str = ""
+    ocr_dpi: int = Field(default=300, ge=72)
+    libreoffice_path: str = ""
+    conversion_timeout: float = Field(default=180.0, gt=0)
 
 
 @lru_cache

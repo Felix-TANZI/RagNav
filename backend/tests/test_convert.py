@@ -3,8 +3,9 @@ import pymupdf
 import pypandoc
 import pytest
 
-from app.ingest.convert import (ConversionError, Page, _hyphenated_compounds, _restore_compounds,
-                                _strip_repeated_lines, convert)
+from app.ingest.base import ConversionError, Page
+from app.ingest.convert import _strip_repeated_lines, convert
+from app.ingest.pdf import _hyphenated_compounds, _restore_compounds
 from scripts.build_test_corpus import render_pdf
 
 LONG_PARAGRAPH = "<p>" + "Le cluster héberge les machines virtuelles du projet et assure leur disponibilité. " * 120 + "</p>"
@@ -61,13 +62,15 @@ def test_pdf_petit_tableau_sans_bordure_garde_son_contenu(tmp_path, monkeypatch)
     assert "VM150" in text and "8090" in text
 
 
-def test_pdf_scanne_refuse(tmp_path):
+def test_pdf_scanne_vide_refuse_apres_ocr(tmp_path):
     f = tmp_path / "scan.pdf"
+    blank = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 50, 50), 0)
+    blank.clear_with(255)
     doc = pymupdf.open()
     page = doc.new_page()
-    page.insert_image(page.rect, pixmap=pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 50, 50), 0))
+    page.insert_image(page.rect, pixmap=blank)
     doc.save(f)
-    with pytest.raises(ConversionError, match="scanné"):
+    with pytest.raises(ConversionError, match="OCR"):
         convert(f)
 
 
@@ -77,7 +80,7 @@ def test_pdf_corrompu_et_format_inconnu(tmp_path):
     with pytest.raises(ConversionError):
         convert(bad)
     with pytest.raises(ConversionError, match="non pris en charge"):
-        convert(tmp_path / "image.png")
+        convert(tmp_path / "installateur.exe")
 
 
 def test_entetes_et_pieds_de_page_seulement_en_bord_de_page():

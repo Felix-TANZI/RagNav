@@ -5,8 +5,9 @@ import sys
 from pathlib import Path
 
 from app.config import get_settings
+from app.ingest.base import ConversionError, ConvertOptions
 from app.ingest.chunker import chunk_document
-from app.ingest.convert import ConversionError, convert
+from app.ingest.convert import convert
 from app.ingest.inventory import InventoryError, check_corpus, load_inventory
 
 INVENTORY = "inventaire.csv"
@@ -36,7 +37,7 @@ def main() -> int:
         if entry.file in check.missing:
             continue
         try:
-            pages = convert(args.corpus / entry.file)
+            pages = convert(args.corpus / entry.file, ConvertOptions.from_settings(settings))
         except ConversionError as e:
             print(f"{entry.file:<40} ERREUR {e}")
             failures += 1

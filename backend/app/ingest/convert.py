@@ -3,83 +3,81 @@
 import math
 import re
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
 
-import pymupdf
-import pymupdf4llm
 import pypandoc
 
-PANDOC_FORMATS = {".tex": "latex", ".docx": "docx", ".odt": "odt", ".html": "html", ".htm": "html", ".rst": "rst"}
+from app.ingest import office
+from app.ingest.base import ConversionError, ConvertOptions, Page
+from app.ingest.pdf import image_pages, pdf_pages
+
+PDF_FORMATS = {".pdf", ".xps", ".oxps"}
+IMAGE_FORMATS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif"}
+PANDOC_FORMATS = {
+    ".tex": "latex", ".docx": "docx", ".odt": "odt", ".html": "html", ".htm": "html", ".rst": "rst",
+    ".pptx": "pptx", ".xlsx": "xlsx", ".csv": "csv", ".tsv": "tsv", ".rtf": "rtf", ".epub": "epub",
+    ".ipynb": "ipynb", ".adoc": "asciidoc", ".asciidoc": "asciidoc", ".org": "org", ".typ": "typst",
+    ".dbk": "docbook", ".wiki": "mediawiki", ".textile": "textile",
+}
+LIBREOFFICE_FORMATS = {".doc": "docx", ".dot": "docx", ".xls": "xlsx", ".ods": "xlsx", ".ppt": "pptx",
+                       ".pps": "pptx", ".odp": "pptx"}
 MARKDOWN_FORMATS = {".md", ".markdown", ".txt"}
-SUPPORTED_FORMATS = {".pdf"} | set(PANDOC_FORMATS) | MARKDOWN_FORMATS
+CODE_FORMATS = {".yaml", ".yml", ".json", ".xml", ".toml", ".ini", ".conf", ".cfg", ".sh", ".ps1", ".py",
+                ".sql", ".log"}
+SUPPORTED_FORMATS = (PDF_FORMATS | IMAGE_FORMATS | set(PANDOC_FORMATS) | set(LIBREOFFICE_FORMATS)
+                     | MARKDOWN_FORMATS | CODE_FORMATS)
 MIN_CHARACTERS = 20
 EDGE_LINES = 3
 
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
-_BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _HYPHEN_BR = re.compile(r"(?<=\w)-<br\s*/?>(?=\w)", re.IGNORECASE)
+_BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _URL_BREAK = re.compile(r"(?<=://)\s+")
-_LINE_END_HYPHEN = re.compile(r"(\w+)-\n(\w+)")
 _DIGITS = re.compile(r"\d+")
 
 
-class ConversionError(ValueError):
-    pass
-
-
-@dataclass
-class Page:
-    text: str
-    number: int | None = None
-
-
-def convert(path: Path) -> list[Page]:
+def convert(path: Path, options: ConvertOptions = ConvertOptions()) -> list[Page]:
     ext = path.suffix.lower()
     if ext not in SUPPORTED_FORMATS:
         raise ConversionError(f"format {ext or 'sans extension'} non pris en charge")
-    if ext == ".pdf":
-        pages = _strip_repeated_lines(_pdf_pages(path))
-    elif ext in PANDOC_FORMATS:
-        pages = [Page(_pandoc(path, PANDOC_FORMATS[ext]))]
-    else:
-        pages = [Page(path.read_text(encoding="utf-8", errors="replace"))]
-    pages = [Page(_clean(p.text), p.number) for p in pages]
+    try:
+        pages = _dispatch(path, ext, options)
+    except ConversionError:
+        raise
+    except Exception as e:
+        raise ConversionError(f"lecture impossible ({type(e).__name__}, {e})") from e
+    pages = [Page(_clean(p.text), p.number, p.ocr) for p in pages]
     if sum(len(p.text.strip()) for p in pages) < MIN_CHARACTERS:
-        raise ConversionError("aucun texte exploitable, le document est peut-être scanné")
+        raise ConversionError("aucun texte exploitable, même après OCR")
     return pages
 
 
-def _pdf_pages(path: Path) -> list[Page]:
+def _dispatch(path: Path, ext: str, options: ConvertOptions) -> list[Page]:
+    if ext in PDF_FORMATS:
+        return _strip_repeated_lines(pdf_pages(path, options))
+    if ext in IMAGE_FORMATS:
+        return image_pages(path, options)
+    if ext in PANDOC_FORMATS:
+        return [Page(_pandoc(path, PANDOC_FORMATS[ext]))]
+    if ext in LIBREOFFICE_FORMATS:
+        target = LIBREOFFICE_FORMATS[ext]
+        with office.converted(path, target, options) as converted:
+            return [Page(_pandoc(converted, target))]
+    text = _read_text(path)
+    if ext in CODE_FORMATS:
+        return [Page(f"# {path.name}\n\n```\n{text}\n```")]
+    return [Page(text)]
+
+
+def _read_text(path: Path) -> str:
+    data = path.read_bytes()
     try:
-        with pymupdf.open(path) as doc:
-            if doc.needs_pass:
-                raise ConversionError("PDF protégé par un mot de passe")
-            raw = [page.get_text() for page in doc]
-            chunks = pymupdf4llm.to_markdown(doc, page_chunks=True, show_progress=False, ignore_images=True)
-    except (pymupdf.FileDataError, RuntimeError) as e:
-        raise ConversionError(f"PDF illisible ({e})") from e
-    compounds = _hyphenated_compounds("\n".join(raw))
-    return [Page(_restore_compounds(c["text"], compounds), c["metadata"]["page_number"]) for c in chunks]
-
-
-def _hyphenated_compounds(raw: str) -> dict[str, str]:
-    # pymupdf4llm recolle tout mot coupé en fin de ligne, on remet le trait d'union des noms composés
-    compounds = {}
-    for left, right in _LINE_END_HYPHEN.findall(raw):
-        compound = f"{left}-{right}"
-        seen_whole = re.search(rf"(?<![\w-]){re.escape(compound)}(?![\w-])", raw, re.IGNORECASE)
-        if seen_whole or any(ch.isdigit() for ch in compound):
-            compounds[left + right] = compound
-    return compounds
-
-
-def _restore_compounds(text: str, compounds: dict[str, str]) -> str:
-    for joined, compound in compounds.items():
-        text = re.sub(rf"(?<![\w-]){re.escape(joined)}(?![\w-])", compound, text)
-    return text
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = data.decode("cp1252", errors="replace")
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _pandoc(path: Path, source_format: str) -> str:
@@ -120,5 +118,5 @@ def _strip_repeated_lines(pages: list[Page]) -> list[Page]:
     for page, lines in zip(pages, split):
         edges = _edge_indexes(lines)
         kept = [line for i, line in enumerate(lines) if not (i in edges and _line_key(line) in repeated)]
-        cleaned.append(Page("\n".join(kept), page.number))
+        cleaned.append(Page("\n".join(kept), page.number, page.ocr))
     return cleaned

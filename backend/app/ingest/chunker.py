@@ -4,7 +4,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 
-from app.ingest.convert import Page
+from app.ingest.base import Page
 
 _ATX = re.compile(r"^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
 _SETEXT = re.compile(r"^ {0,3}(=+|-+)\s*$")
