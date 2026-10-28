@@ -1,0 +1,5 @@
+# backend/requirements.txt
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+httpx2==2.16.0
+pydantic-settings==2.16.1

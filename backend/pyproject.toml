@@ -1,0 +1,12 @@
+# backend/pyproject.toml
+[project]
+name = "gandal-ai"
+version = "0.1.0"
+description = "GANDAL-AI, RAG navigation du projet GANDAL GI27"
+authors = [{ name = "Felix NZIKO" }, { name = "Atchine Hanniel" }]
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not live'"
+markers = ["live: tests sur les vrais services (Ollama ou LiteLLM, Qdrant)"]

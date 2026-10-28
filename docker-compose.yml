@@ -1,0 +1,28 @@
+# docker-compose.yml
+# Sur le PC, seul Qdrant tourne en conteneur (docker compose up -d qdrant), sur la VM150 tout tourne
+name: gandal-ai
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+    ports:
+      - "8090:8090"
+    env_file: backend/.env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  qdrant_data:
