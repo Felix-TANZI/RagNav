@@ -29,8 +29,35 @@ Aucun secret n'est écrit dans le code. Les clés n'ont pas de valeur par défau
 | Dossier | Rôle |
 | --- | --- |
 | `backend/` | Service GANDAL-AI (FastAPI), tests pytest, Dockerfile |
+| `backend/app/ingest/` | Lecture des documents, découpage en passages, liste du corpus |
 | `frontend/` | Interface React (client et admin) |
+| `corpus/` | Documents indexés et leur liste `inventaire.csv`, `corpus/test/` contient le corpus de test fictif |
+| `eval/questions.jsonl` | Jeu de questions d'évaluation (réponse attendue, document, section) |
 | `docker-compose.yml` | Qdrant (PC et VM150) et backend (VM150) |
+
+## Corpus
+
+Formats lus : PDF (PyMuPDF et pymupdf4llm), LaTeX, Word (.docx), OpenDocument (.odt), HTML et reStructuredText
+(Pandoc), Markdown et texte. Chaque document est ramené à du Markdown puis découpé par section, en passages
+d'environ 300 mots avec 45 mots de recouvrement. Chaque passage garde le document, le chemin des titres et la page.
+
+`corpus/inventaire.csv` liste les documents de référence, un par ligne, séparateur `;` :
+
+```
+fichier;titre;source;version;date
+test/architecture_generale.pdf;Architecture générale du mini data center GANDAL;Cellule Infrastructure (I1);1.2;2026-10-20
+```
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m scripts.inspect_corpus                        # contrôle de lecture et de découpage
+.\.venv\Scripts\python.exe -m scripts.inspect_corpus --detail apercu.md     # écrit tous les passages
+.\.venv\Scripts\python.exe -m scripts.build_test_corpus                     # régénère les PDF de test
+```
+
+Un document scanné (sans texte), protégé par mot de passe ou dans un format inconnu est signalé et ignoré.
+Dans un PDF, un petit tableau sans bordure (moins de 5 lignes) est restitué comme du texte dans l'ordre de
+lecture : son contenu est conservé mais la séparation des lignes du tableau est perdue.
 
 ## Démarrer sur le PC
 
@@ -83,7 +110,7 @@ curl localhost:8090/health
 | Étape | Contenu | État |
 | --- | --- | --- |
 | 0 | Environnement de travail, `/health`, squelettes backend et frontend | fait |
-| 1 | Corpus de test fictif, lecture et découpage par section (PDF, Markdown, LaTeX) | à faire |
+| 1 | Corpus de test fictif, lecture et découpage par section, jeu d'évaluation | fait |
 | 2 | Index, embeddings bge-m3 et collection Qdrant `navigation` | à faire |
 | 3 | Comptes utilisateurs (rôles admin et client) et API de gestion des documents | à faire |
 | 4 | Route `/chat`, seuil de pertinence, citations et refus | à faire |

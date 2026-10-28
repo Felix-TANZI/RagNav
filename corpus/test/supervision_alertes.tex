@@ -1,0 +1,62 @@
+% corpus/test/supervision_alertes.tex
+\documentclass[11pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+\begin{document}
+
+\chapter{Supervision et alertes}
+
+\emph{Document de test fictif, rédigé pour valider le RAG navigation. Cellule Exploitation (E1), version 1.0 du 22 octobre 2026.}
+
+\section{Outils de supervision}
+La supervision de GANDAL est centralisée sur la machine virtuelle VM160. Elle repose sur les outils suivants.
+
+\begin{itemize}
+\item Prometheus collecte les métriques, sur le port 9090.
+\item Grafana affiche les tableaux de bord, sur le port 3000, à l'adresse \texttt{http://grafana.gandal.lan:3000}.
+\item Alertmanager envoie les notifications, sur le port 9093.
+\item node\_exporter tourne sur chaque machine et expose ses métriques sur le port 9100.
+\item dcgm-exporter tourne sur le nœud REM et expose les métriques des cartes graphiques sur le port 9400.
+\end{itemize}
+
+Les métriques sont conservées 30 jours dans Prometheus.
+
+\section{Tableaux de bord}
+Grafana propose quatre tableaux de bord principaux : « Vue générale » pour l'état de toutes les machines, « Cluster NOVA » pour la charge des hyperviseurs, « GPU REM » pour l'utilisation, la mémoire et la température des cartes graphiques, et « Services » pour la disponibilité de GANDAL-AI, de LiteLLM et d'Ollama.
+
+Tout membre du projet peut consulter les tableaux de bord avec son compte GANDAL. Seule la cellule Exploitation peut les modifier.
+
+\section{Règles d'alerte}
+\begin{tabular}{|l|l|l|}
+\hline
+Alerte & Condition & Gravité \\
+\hline
+Machine injoignable & aucune réponse pendant 2 minutes & critique \\
+Processeur saturé & plus de 90 \% pendant 10 minutes & avertissement \\
+Disque presque plein & plus de 85 \% d'occupation & avertissement \\
+Disque plein & plus de 95 \% d'occupation & critique \\
+GPU trop chaud & plus de 85 °C pendant 5 minutes & avertissement \\
+Sauvegarde échouée & échec d'une tâche sur ARCHIVE & critique \\
+GANDAL-AI dégradé & route /health en état degraded pendant 5 minutes & avertissement \\
+\hline
+\end{tabular}
+
+\section{Notifications}
+Les avertissements sont publiés sur le canal Mattermost \texttt{\textasciitilde{}gandal-alertes}. Les alertes critiques sont publiées sur le même canal et envoyées en plus par SMS à la personne d'astreinte. Une alerte reste active tant que sa condition est vraie ; elle est notifiée de nouveau toutes les quatre heures si personne ne l'a acquittée.
+
+\section{Astreinte}
+La cellule Exploitation assure une astreinte tournante d'une semaine. La relève a lieu le lundi à 8 h. Le nom et le numéro de la personne d'astreinte sont affichés en tête du canal \texttt{\textasciitilde{}gandal-alertes}.
+
+En heures ouvrées, la personne d'astreinte intervient dans les 30 minutes. La nuit et le week-end, le délai d'intervention est de 2 heures.
+
+\section{Ajouter une machine à la supervision}
+\begin{enumerate}
+\item Installer node\_exporter sur la machine et vérifier qu'il répond sur le port 9100.
+\item Ouvrir le port 9100 depuis VM160 en faisant une demande à la cellule Réseau.
+\item Ajouter la machine dans le fichier \texttt{targets.yml} de Prometheus sur VM160.
+\item Vérifier dans Grafana que la machine apparaît dans le tableau de bord « Vue générale ».
+\end{enumerate}
+
+\end{document}

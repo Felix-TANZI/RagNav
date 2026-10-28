@@ -1,0 +1,44 @@
+<!-- backend/scripts/corpus_test/procedure_sauvegarde.html -->
+<h1>Procédure de sauvegarde et de restauration</h1>
+<p><i>Document de test fictif, rédigé pour valider le RAG navigation. Cellule Infrastructure (I1), version 1.0 du 10 octobre 2026.</i></p>
+
+<h2>1. Objet</h2>
+<p>Cette procédure décrit comment les données de GANDAL sont sauvegardées, combien de temps les sauvegardes sont conservées et comment restaurer une machine virtuelle ou un fichier. Elle s'adresse aux membres de la cellule Infrastructure et aux administrateurs des autres cellules.</p>
+
+<h2>2. Périmètre</h2>
+<p>Sont sauvegardés : toutes les machines virtuelles du cluster NOVA, la configuration du pare-feu GARDIEN et le partage /mnt/projets de SIRIUS. Les sauvegardes des machines virtuelles et de la configuration sont stockées sur le serveur ARCHIVE (Proxmox Backup Server, adresse 10.10.40.30, interface web sur le port 8007), dans le datastore vm-backup.</p>
+<p>Le nœud GPU REM n'est pas sauvegardé en entier : seuls ses fichiers de configuration le sont. Les modèles et les jeux de données doivent être rangés sur le partage /mnt/projets de SIRIUS, qui est protégé par des instantanés.</p>
+
+<h2>3. Planification</h2>
+<table>
+<tr><th>Élément</th><th>Fréquence</th><th>Heure</th><th>Destination</th></tr>
+<tr><td>Machines virtuelles du cluster NOVA</td><td>Quotidienne</td><td>01 h 30</td><td>ARCHIVE, datastore vm-backup</td></tr>
+<tr><td>Configuration de GARDIEN</td><td>Hebdomadaire, le dimanche</td><td>03 h 00</td><td>ARCHIVE, datastore config</td></tr>
+<tr><td>Partage /mnt/projets de SIRIUS</td><td>Toutes les 6 heures</td><td>00 h, 06 h, 12 h, 18 h</td><td>Instantanés ZFS locaux</td></tr>
+<tr><td>Instantanés de SIRIUS</td><td>Quotidienne</td><td>04 h 00</td><td>Réplication vers ARCHIVE</td></tr>
+</table>
+<p>Une sauvegarde qui échoue déclenche une alerte critique dans la supervision. La cellule Infrastructure doit relancer la sauvegarde le jour même.</p>
+
+<h2>4. Durée de conservation</h2>
+<p>Les sauvegardes des machines virtuelles suivent la règle de rétention suivante : 7 sauvegardes quotidiennes, 4 sauvegardes hebdomadaires et 6 sauvegardes mensuelles. Une machine virtuelle peut donc être restaurée dans l'état où elle se trouvait jusqu'à six mois en arrière.</p>
+<p>Les instantanés ZFS de SIRIUS sont conservés 14 jours. Le nettoyage des anciennes sauvegardes (prune puis garbage collection) s'exécute chaque samedi à 05 h 00 sur ARCHIVE.</p>
+
+<h2>5. Restaurer une machine virtuelle</h2>
+<ol>
+<li>Se connecter à l'interface Proxmox du cluster, https://nova.gandal.lan:8006, avec un compte administrateur.</li>
+<li>Dans l'arborescence, ouvrir le stockage ARCHIVE puis l'onglet Backups.</li>
+<li>Choisir la sauvegarde de la machine à la date voulue et cliquer sur Restore.</li>
+<li>Indiquer un nouvel identifiant de machine virtuelle, dans la plage 900 à 999, pour ne pas écraser la machine d'origine.</li>
+<li>Démarrer la machine restaurée, vérifier son contenu, puis seulement l'échanger avec la machine d'origine.</li>
+</ol>
+<p>En ligne de commande, la même opération se fait sur un nœud NOVA avec la commande qmrestore suivie du chemin de la sauvegarde et du nouvel identifiant.</p>
+
+<h2>6. Restaurer un fichier</h2>
+<p>Pour récupérer un seul fichier sans restaurer toute la machine, ouvrir l'interface web d'ARCHIVE sur le port 8007, sélectionner la sauvegarde, puis utiliser le bouton File Restore. Le fichier peut être téléchargé directement depuis le navigateur.</p>
+<p>Pour un fichier du partage /mnt/projets, il suffit de parcourir le dossier caché .zfs/snapshot du partage, qui contient les instantanés des 14 derniers jours.</p>
+
+<h2>7. Tests de restauration</h2>
+<p>Le premier lundi de chaque mois, la cellule Infrastructure restaure une machine virtuelle tirée au sort dans la plage d'identifiants 900 à 999, vérifie qu'elle démarre et que ses données sont lisibles, puis la supprime. Le résultat est consigné dans le registre des tests de restauration, sur le Drive de la cellule.</p>
+
+<h2>8. Contacts</h2>
+<p>Pour toute demande de restauration, ouvrir un ticket dans le projet « Infrastructure » du gestionnaire de tickets. Les demandes sont traitées sous un jour ouvré. En dehors des heures ouvrées, seule l'astreinte de la cellule Exploitation peut lancer une restauration urgente.</p>

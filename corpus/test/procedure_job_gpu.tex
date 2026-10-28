@@ -1,0 +1,66 @@
+% corpus/test/procedure_job_gpu.tex
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+\title{Procédure de soumission d'un job GPU}
+\author{Cellule Calcul (C1)}
+\date{18 octobre 2026}
+
+\begin{document}
+\maketitle
+
+\emph{Document de test fictif, rédigé pour valider le RAG navigation. Cellule Calcul (C1), version 1.1 du 18 octobre 2026.}
+
+\section{Objet}
+Cette procédure explique comment lancer un calcul sur les cartes graphiques du nœud REM avec l'ordonnanceur \texttt{gandal-gpu}, comment suivre son exécution et comment récupérer ses résultats. Elle concerne les entraînements longs et les calculs qui dépassent les limites de JupyterLab.
+
+\section{Ressources disponibles}
+Le nœud REM dispose de deux cartes NVIDIA RTX 4090 de 24~Go chacune. Un job peut demander une ou deux cartes. Le processeur et la mémoire vive sont partagés : un job reçoit 8 cœurs et 32~Go de mémoire par carte demandée.
+
+\section{Règles d'utilisation}
+\begin{tabular}{|l|l|}
+\hline
+Règle & Valeur \\
+\hline
+Durée maximale d'un job en journée (6 h -- 20 h) & 4 heures \\
+Durée maximale d'un job la nuit (20 h -- 6 h) & 8 heures \\
+Jobs simultanés par utilisateur & 2 \\
+Jobs à deux cartes simultanés par cellule & 1 \\
+Conservation des résultats & 30 jours \\
+\hline
+\end{tabular}
+
+Les jobs sont servis dans l'ordre d'arrivée, avec une priorité réduite pour un utilisateur qui a déjà consommé plus de 20 heures de GPU dans la semaine. Un job qui dépasse sa durée maximale est arrêté automatiquement.
+
+\section{Préparer son job}
+Un job s'exécute dans un conteneur. Les images autorisées sont publiées sur le registre interne \texttt{registry.gandal.lan}, par exemple \texttt{registry.gandal.lan/ia/pytorch:2.5}. Pour utiliser une autre image, en faire la demande à la cellule Calcul.
+
+Le script et les données doivent se trouver dans le dossier de la cellule sur le stockage SIRIUS, sous \texttt{/projets}, qui est monté automatiquement dans le conteneur.
+
+\section{Soumettre un job}
+La soumission se fait depuis le BASTION ou depuis toute machine virtuelle du projet :
+
+\begin{verbatim}
+gandal-gpu submit --gpus 1 --time 02:00:00 \
+    --image registry.gandal.lan/ia/pytorch:2.5 \
+    python /projets/ia/entrainement/train.py
+\end{verbatim}
+
+La commande renvoie l'identifiant du job, de la forme \texttt{J-000123}. L'option \texttt{--gpus} accepte 1 ou 2 et l'option \texttt{--time} fixe la durée demandée, sans dépasser la durée maximale.
+
+\section{Suivre et annuler un job}
+\begin{itemize}
+\item \texttt{gandal-gpu status} affiche la file d'attente et l'état de ses jobs.
+\item \texttt{gandal-gpu logs J-000123} affiche la sortie du job en cours.
+\item \texttt{gandal-gpu cancel J-000123} annule un job en attente ou en cours.
+\end{itemize}
+
+\section{Récupérer les résultats}
+Les fichiers produits par un job sont écrits dans \texttt{/projets/nom-de-la-cellule/jobs/J-000123}. Ils sont conservés 30 jours, puis supprimés. Les résultats à garder doivent être copiés dans un autre dossier de la cellule avant cette échéance.
+
+\section{En cas de problème}
+Si un job s'arrête avec une erreur de mémoire GPU, réduire la taille des lots ou demander une seconde carte. Si un job reste plus d'une heure en attente alors que la file est vide, ouvrir un ticket dans le projet « Calcul » du gestionnaire de tickets.
+
+\end{document}

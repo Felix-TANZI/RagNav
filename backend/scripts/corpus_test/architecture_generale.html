@@ -1,0 +1,61 @@
+<!-- backend/scripts/corpus_test/architecture_generale.html -->
+<h1>Architecture générale du mini data center GANDAL</h1>
+<p><i>Document de test fictif, rédigé pour valider le RAG navigation. Cellule Infrastructure (I1), version 1.2 du 20 octobre 2026.</i></p>
+
+<h2>1. Objet du document</h2>
+<p>Ce document décrit l'architecture du mini data center GANDAL : les machines, leur rôle, leur place dans le réseau et les principaux flux entre les services. Il sert de référence commune aux cellules du projet.</p>
+<p>Le plan d'adressage détaillé, les VLAN et les règles du pare-feu sont décrits dans le document « Plan d'adressage et services réseau ». Les opérations courantes sont décrites dans les documents de procédure : sauvegarde et restauration, soumission d'un job GPU, supervision et alertes.</p>
+
+<h2>2. Vue d'ensemble</h2>
+<p>GANDAL est installé dans la salle serveur du bâtiment B. L'ensemble tient dans deux baies de 42U. L'alimentation passe par un onduleur de 6 kVA qui assure environ 25 minutes d'autonomie à pleine charge, puis déclenche l'arrêt propre des machines.</p>
+<p>Les machines physiques forment quatre groupes : le cluster de virtualisation NOVA, le nœud de calcul GPU REM, le serveur de stockage SIRIUS et le serveur de sauvegarde ARCHIVE. Le pare-feu GARDIEN sépare le réseau du campus du réseau interne de GANDAL. Le serveur EMILIA porte la passerelle des modèles d'IA.</p>
+
+<h3>2.1 Cluster de virtualisation NOVA</h3>
+<p>Le cluster NOVA réunit trois serveurs Proxmox VE 8, nommés NOVA-1, NOVA-2 et NOVA-3. Chaque serveur dispose de deux processeurs Xeon de 16 cœurs et de 256 Go de mémoire. Le stockage des machines virtuelles repose sur Ceph, avec une réplication sur trois nœuds, soit 12 To utiles.</p>
+<p>La haute disponibilité est activée : si un nœud tombe, ses machines virtuelles redémarrent sur les deux autres en moins de trois minutes. L'interface d'administration est accessible à l'adresse https://nova.gandal.lan:8006, depuis le VLAN d'administration uniquement.</p>
+
+<h3>2.2 Nœud de calcul GPU REM</h3>
+<p>REM est un serveur physique équipé de deux cartes NVIDIA RTX 4090 de 24 Go, de 128 Go de mémoire et d'Ubuntu Server 24.04. Il sert les modèles de langue avec Ollama sur le port 11434 et héberge JupyterLab sur le port 8888, dans le conteneur CT310.</p>
+<p>Les entraînements longs ne se lancent pas depuis JupyterLab : ils passent par l'ordonnanceur gandal-gpu, décrit dans la procédure de soumission d'un job GPU. REM est exploité par la cellule Calcul (C1).</p>
+
+<h3>2.3 Stockage SIRIUS</h3>
+<p>SIRIUS est un serveur TrueNAS SCALE équipé de huit disques de 16 To montés en RAIDZ2, soit environ 85 To utiles. Il exporte en NFS le partage /mnt/projets, monté sur les machines virtuelles, et propose des partages SMB pour les postes des utilisateurs. Des instantanés ZFS sont pris toutes les six heures.</p>
+
+<h2>3. Machines et services</h2>
+<p>Le tableau suivant liste les machines de GANDAL, leur adresse dans le réseau interne et les ports des services qu'elles exposent.</p>
+<table>
+<tr><th>Machine</th><th>Type</th><th>Rôle</th><th>Adresse IP</th><th>Ports</th></tr>
+<tr><td>GARDIEN</td><td>Physique</td><td>Pare-feu pfSense, VPN WireGuard, DNS</td><td>10.10.10.1</td><td>51820/udp, 53</td></tr>
+<tr><td>NOVA-1 à NOVA-3</td><td>Physique</td><td>Hyperviseurs Proxmox VE</td><td>10.10.10.11 à 10.10.10.13</td><td>8006</td></tr>
+<tr><td>EMILIA</td><td>Physique</td><td>Passerelle des modèles LiteLLM</td><td>10.10.20.31</td><td>4000</td></tr>
+<tr><td>BASTION (VM110)</td><td>Machine virtuelle</td><td>Point d'entrée SSH</td><td>10.10.20.110</td><td>2222</td></tr>
+<tr><td>VM150</td><td>Machine virtuelle</td><td>Service GANDAL-AI et index Qdrant</td><td>10.10.20.150</td><td>8090</td></tr>
+<tr><td>VM160</td><td>Machine virtuelle</td><td>Supervision Prometheus et Grafana</td><td>10.10.20.160</td><td>9090, 3000, 9093</td></tr>
+<tr><td>REM</td><td>Physique</td><td>Calcul GPU, Ollama, JupyterLab</td><td>10.10.30.40</td><td>11434, 8888</td></tr>
+<tr><td>SIRIUS</td><td>Physique</td><td>Stockage TrueNAS</td><td>10.10.40.20</td><td>2049 (NFS), 445 (SMB)</td></tr>
+<tr><td>ARCHIVE</td><td>Physique</td><td>Proxmox Backup Server</td><td>10.10.40.30</td><td>8007</td></tr>
+</table>
+
+<h2>4. Service GANDAL-AI</h2>
+<p>GANDAL-AI est l'assistant du projet. Il tourne sur la machine virtuelle VM150 et répond sur le port 8090, avec deux routes : /health pour l'état du service et /chat pour poser une question. Il est maintenu par la sous-cellule IA (AI1).</p>
+<p>GANDAL-AI s'appuie sur un index vectoriel Qdrant installé sur la même machine, sur le port 6333, joignable uniquement en local. Pour générer ses réponses, il appelle la passerelle LiteLLM d'EMILIA sur le port 4000, qui transmet les requêtes à Ollama sur REM, port 11434.</p>
+
+<h2>5. Principaux flux</h2>
+<ul>
+<li>Un utilisateur se connecte d'abord au VPN WireGuard de GARDIEN (port 51820/udp), puis au BASTION sur le port 2222, d'où il rejoint les autres machines.</li>
+<li>Les applications qui utilisent un modèle de langue appellent EMILIA sur le port 4000, qui relaie vers REM sur le port 11434.</li>
+<li>Toutes les machines virtuelles montent le partage NFS de SIRIUS.</li>
+<li>ARCHIVE sauvegarde chaque nuit les machines virtuelles du cluster NOVA.</li>
+<li>VM160 collecte les métriques de toutes les machines grâce à node_exporter, sur le port 9100.</li>
+</ul>
+
+<h2>6. Responsabilités</h2>
+<table>
+<tr><th>Cellule</th><th>Périmètre</th></tr>
+<tr><td>Infrastructure (I1)</td><td>Cluster NOVA, stockage SIRIUS, sauvegardes ARCHIVE</td></tr>
+<tr><td>Réseau (R1)</td><td>Pare-feu GARDIEN, VLAN, VPN, DNS</td></tr>
+<tr><td>Calcul (C1)</td><td>Nœud REM et ordonnanceur gandal-gpu</td></tr>
+<tr><td>IA (AI1)</td><td>Passerelle EMILIA et service GANDAL-AI</td></tr>
+<tr><td>Exploitation (E1)</td><td>Supervision, alertes et astreinte</td></tr>
+<tr><td>Support (S1)</td><td>Comptes utilisateurs, prise en main, assistance</td></tr>
+</table>

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     cors_origins: list[str] = ["http://localhost:5173"]
     health_timeout: float = 5.0
+    chunk_words: int = Field(default=300, ge=50)
+    chunk_overlap_words: int = Field(default=45, ge=0)
 
 
 @lru_cache

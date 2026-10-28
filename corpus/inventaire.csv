@@ -1,0 +1,7 @@
+fichier;titre;source;version;date
+test/architecture_generale.pdf;Architecture générale du mini data center GANDAL;Cellule Infrastructure (I1), document de test fictif;1.2;2026-10-20
+test/procedure_sauvegarde.pdf;Procédure de sauvegarde et de restauration;Cellule Infrastructure (I1), document de test fictif;1.0;2026-10-10
+test/plan_adressage_reseau.md;Plan d'adressage et services réseau;Cellule Réseau (R1), document de test fictif;1.0;2026-10-12
+test/guide_prise_en_main.md;Guide de prise en main de GANDAL;Cellule Support (S1), document de test fictif;2.0;2026-10-15
+test/procedure_job_gpu.tex;Procédure de soumission d'un job GPU;Cellule Calcul (C1), document de test fictif;1.1;2026-10-18
+test/supervision_alertes.tex;Supervision et alertes;Cellule Exploitation (E1), document de test fictif;1.0;2026-10-22
