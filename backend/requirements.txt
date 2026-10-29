@@ -6,3 +6,4 @@ pydantic-settings==2.16.1
 pymupdf==1.28.2
 pymupdf4llm==1.28.2
 pypandoc_binary==1.17
+qdrant-client==1.19.1

@@ -103,7 +103,27 @@ npm run dev
 ```
 
 Ouvrir <http://localhost:5173>, la page affiche l'état du serveur de modèles et de Qdrant.
-Documentation de l'API sur <http://localhost:8090/docs>.
+Documentation de l'API sur <http://127.0.0.1:8090/docs>.
+
+## Index
+
+Les passages sont vectorisés par bge-m3 et rangés dans la collection Qdrant `navigation` (vecteur nommé `dense`,
+distance cosinus). Chaque passage garde document, titre, source, version, date, section, chemin des titres, page
+et texte. Le texte vectorisé est précédé du titre du document et du chemin des sections.
+
+Seuls les documents nouveaux ou modifiés sont recalculés : l'empreinte d'un document couvre son contenu, le modèle
+d'embedding et les réglages de découpage. Une nouvelle version est écrite avant que l'ancienne soit retirée, et un
+document retiré de `inventaire.csv` est supprimé de l'index.
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m scripts.ingest             # indexe la liste du corpus
+.\.venv\Scripts\python.exe -m scripts.ingest --force     # recalcule tout
+.\.venv\Scripts\python.exe -m scripts.ingest --reset     # supprime la collection puis réindexe (changement de modèle)
+.\.venv\Scripts\python.exe -m scripts.eval_retrieval     # rappel@k sur eval/questions.jsonl
+```
+
+Sur le corpus de test, avec 5 passages retrouvés : rappel@1 70 %, rappel@3 95 %, rappel@5 100 %, MRR 0,835.
 
 ## Tests
 
@@ -130,7 +150,7 @@ curl localhost:8090/health
 | --- | --- | --- |
 | 0 | Environnement de travail, `/health`, squelettes backend et frontend | fait |
 | 1 | Corpus de test fictif, lecture et découpage par section, jeu d'évaluation | fait |
-| 2 | Index, embeddings bge-m3 et collection Qdrant `navigation` | à faire |
+| 2 | Index, embeddings bge-m3 et collection Qdrant `navigation`, rappel@k | fait |
 | 3 | Comptes utilisateurs (rôles admin et client) et API de gestion des documents | à faire |
 | 4 | Route `/chat`, seuil de pertinence, citations et refus | à faire |
 | 5 | Interface, espace admin (documents) et espace client (questions) | à faire |

@@ -10,10 +10,14 @@ class Settings(BaseSettings):
 
     # Les secrets n'ont pas de valeur par défaut, ils viennent de backend/.env ou de l'environnement
     llm_api_key: SecretStr = Field(min_length=1)
-    llm_base_url: str = "http://localhost:11434/v1"
+    llm_base_url: str = "http://127.0.0.1:11434/v1"
     llm_model: str = "qwen3:4b-instruct-2507-q4_K_M"
     embed_model: str = "bge-m3"
-    qdrant_url: str = "http://localhost:6333"
+    embed_batch_size: int = Field(default=16, ge=1)
+    embed_timeout: float = Field(default=300.0, gt=0)
+    qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_timeout: float = Field(default=30.0, gt=0)
+    default_corpus: str = "navigation"
     cors_origins: list[str] = ["http://localhost:5173"]
     health_timeout: float = 5.0
     chunk_words: int = Field(default=300, ge=50)
