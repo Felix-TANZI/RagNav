@@ -12,14 +12,14 @@ from app.ingest.inventory import load_inventory
 ROOT = Path(__file__).resolve().parents[2]
 QUESTIONS = [json.loads(line) for line in (ROOT / "eval" / "questions.jsonl").read_text(encoding="utf-8").splitlines()
              if line.strip()]
-ENTRIES = {e.file: e for e in load_inventory(ROOT / "corpus" / "inventaire.csv")}
+ENTRIES = {Path(e.file).name: e for e in load_inventory(ROOT / "corpus" / "inventaire.csv")}
 
 
 @pytest.fixture(scope="module")
 def sections():
     found: dict[tuple[str, str], str] = {}
     for name, entry in ENTRIES.items():
-        for c in chunk_document(name, convert(ROOT / "corpus" / name), title=entry.title):
+        for c in chunk_document(name, convert(ROOT / "corpus" / entry.file), title=entry.title):
             found[(name, c.section)] = found.get((name, c.section), "") + "\n" + c.text
     return found
 

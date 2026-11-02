@@ -1,13 +1,10 @@
-﻿# backend/tests/test_health.py
+# backend/tests/test_health.py
 import httpx2 as httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import Settings
 from app.main import create_app, get_http
-
-SETTINGS = Settings(_env_file=None, llm_api_key="cle-de-test",
-                    llm_model="qwen3:4b-instruct-2507-q4_K_M", embed_model="bge-m3")
+from tests.fakes import make_settings
 
 
 def fake_services(models: list[str], qdrant_up: bool = True):
@@ -21,9 +18,9 @@ def fake_services(models: list[str], qdrant_up: bool = True):
 
 
 @pytest.fixture
-def client_for():
+def client_for(tmp_path):
     def build(handler) -> TestClient:
-        app = create_app(SETTINGS)
+        app = create_app(make_settings(tmp_path, llm_model="qwen3:4b-instruct-2507-q4_K_M", embed_model="bge-m3"))
         app.dependency_overrides[get_http] = lambda: httpx.Client(transport=httpx.MockTransport(handler))
         return TestClient(app)
     return build

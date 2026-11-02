@@ -93,7 +93,8 @@ docker compose up -d qdrant
 cd backend
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-Copy-Item .env.example .env       # puis renseigner LLM_API_KEY (toute valeur non vide pour Ollama)
+Copy-Item .env.example .env       # puis renseigner les secrets (voir Comptes et sécurité)
+.\.venv\Scripts\python.exe -m scripts.import_corpus      # charge le corpus de test dans la base (une fois)
 .\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --port 8090 --reload
 
 # Frontend (autre terminal)
@@ -111,19 +112,46 @@ Les passages sont vectorisés par bge-m3 et rangés dans la collection Qdrant `n
 distance cosinus). Chaque passage garde document, titre, source, version, date, section, chemin des titres, page
 et texte. Le texte vectorisé est précédé du titre du document et du chemin des sections.
 
-Seuls les documents nouveaux ou modifiés sont recalculés : l'empreinte d'un document couvre son contenu, le modèle
-d'embedding et les réglages de découpage. Une nouvelle version est écrite avant que l'ancienne soit retirée, et un
-document retiré de `inventaire.csv` est supprimé de l'index.
+Les documents sont gérés par l'espace admin (API `/admin/documents`) et indexés en arrière-plan par une file à un
+seul fil. Seuls les documents nouveaux ou modifiés sont recalculés : l'empreinte d'un document couvre son contenu,
+ses métadonnées, le modèle d'embedding et les réglages de découpage. Une nouvelle version est écrite avant que
+l'ancienne soit retirée. La base SQLite et les fichiers sont dans `backend/data/` (volume `gandal_data` en Docker).
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m scripts.ingest             # indexe la liste du corpus
+.\.venv\Scripts\python.exe -m scripts.import_corpus      # importe ../corpus/inventaire.csv dans la base
+.\.venv\Scripts\python.exe -m scripts.ingest             # indexe les documents de la base
 .\.venv\Scripts\python.exe -m scripts.ingest --force     # recalcule tout
 .\.venv\Scripts\python.exe -m scripts.ingest --reset     # supprime la collection puis réindexe (changement de modèle)
 .\.venv\Scripts\python.exe -m scripts.eval_retrieval     # rappel@k sur eval/questions.jsonl
 ```
 
 Sur le corpus de test, avec 5 passages retrouvés : rappel@1 70 %, rappel@3 95 %, rappel@5 100 %, MRR 0,835.
+
+## Comptes et sécurité
+
+| Rôle | Création | Droits |
+| --- | --- | --- |
+| admin | premier admin depuis `ADMIN_EMAIL` et `ADMIN_PASSWORD` au démarrage, puis par un admin | documents, comptes, clés, journal |
+| client | inscription libre (`POST /auth/register`) | poser des questions |
+| application | clé de service créée par un admin, en-tête `X-API-Key` | appeler `/chat` |
+
+- Mots de passe hachés en Argon2, 12 caractères au moins, blocage 15 min après 5 échecs.
+- Jeton d'accès JWT de 15 min, à garder en mémoire côté interface. Jeton de renouvellement dans un cookie HttpOnly
+  SameSite=Strict limité à `/auth`, renouvelé à chaque usage, session de 8 h au plus. Un jeton réutilisé révoque
+  toute la session.
+- Limite de débit par adresse IP sur la connexion et l'inscription.
+- Secrets uniquement dans `backend/.env` : `LLM_API_KEY`, `JWT_SECRET` (32 caractères au moins), `ADMIN_PASSWORD`.
+  `COOKIE_SECURE=false` seulement en développement HTTP.
+
+Documentation interactive sur <http://127.0.0.1:8090/docs>, bouton Authorize pour se connecter.
+
+## Journal et erreurs
+
+Chaque réponse porte l'en-tête `X-Request-ID`, repris dans tout message d'erreur. Le journal (`/admin/events`)
+garde les erreurs avec leur trace technique, les échecs d'indexation avec l'étape et la cause, les connexions, les
+actions des admins et les alertes de sécurité. Aucun mot de passe, jeton ou clé n'y est écrit. Conservation 90 jours
+(`EVENTS_RETENTION_DAYS`).
 
 ## Tests
 
@@ -151,7 +179,7 @@ curl localhost:8090/health
 | 0 | Environnement de travail, `/health`, squelettes backend et frontend | fait |
 | 1 | Corpus de test fictif, lecture et découpage par section, jeu d'évaluation | fait |
 | 2 | Index, embeddings bge-m3 et collection Qdrant `navigation`, rappel@k | fait |
-| 3 | Comptes utilisateurs (rôles admin et client) et API de gestion des documents | à faire |
+| 3 | Comptes (admin, client, clés de service), API des documents, journal des événements | fait |
 | 4 | Route `/chat`, seuil de pertinence, citations et refus | à faire |
 | 5 | Interface, espace admin (documents) et espace client (questions) | à faire |
 | 6 | Évaluation (rappel, fidélité, citations, refus), BM25 si nécessaire, runbook | à faire |

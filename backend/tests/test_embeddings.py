@@ -1,13 +1,14 @@
 # backend/tests/test_embeddings.py
 import json
+from pathlib import Path
 
 import httpx2 as httpx
 import pytest
 
-from app.config import Settings
 from app.embeddings import Embedder, EmbeddingError
+from tests.fakes import make_settings
 
-SETTINGS = Settings(_env_file=None, llm_api_key="cle-de-test", embed_batch_size=2)
+SETTINGS = make_settings(Path("data"), embed_batch_size=2)
 
 
 def embedder(handler) -> Embedder:

@@ -8,7 +8,7 @@ from qdrant_client import models as qm
 from app.config import Settings
 
 DENSE = "dense"
-KEYWORD_FIELDS = ("document", "content_hash")
+KEYWORD_FIELDS = ("document_id", "content_hash")
 
 
 class StoreError(RuntimeError):
@@ -41,12 +41,12 @@ class VectorStore:
     def ensure_collection(self, corpus: str, dim: int, embed_model: str) -> None:
         if self.exists(corpus):
             self.check_model(corpus, embed_model, dim)
-            return
-        self.client.create_collection(
-            corpus,
-            vectors_config={DENSE: qm.VectorParams(size=dim, distance=qm.Distance.COSINE)},
-            metadata={"embed_model": embed_model, "dim": dim},
-        )
+        else:
+            self.client.create_collection(
+                corpus,
+                vectors_config={DENSE: qm.VectorParams(size=dim, distance=qm.Distance.COSINE)},
+                metadata={"embed_model": embed_model, "dim": dim},
+            )
         if self.payload_indexes:
             for field in KEYWORD_FIELDS:
                 self.client.create_payload_index(corpus, field, qm.PayloadSchemaType.KEYWORD)
@@ -61,27 +61,27 @@ class VectorStore:
         if self.exists(corpus):
             self.client.delete_collection(corpus)
 
-    def has_version(self, corpus: str, document: str, content_hash: str) -> bool:
+    def has_version(self, corpus: str, document_id: str, content_hash: str) -> bool:
         if not self.exists(corpus):
             return False
-        flt = qm.Filter(must=[_match("document", document), _match("content_hash", content_hash)])
+        flt = qm.Filter(must=[_match("document_id", document_id), _match("content_hash", content_hash)])
         return self.client.count(corpus, count_filter=flt, exact=True).count > 0
 
-    def replace_document(self, corpus: str, document: str, content_hash: str, points: list[qm.PointStruct]) -> None:
+    def replace_document(self, corpus: str, document_id: str, content_hash: str, points: list[qm.PointStruct]) -> None:
         # Nouvelle version écrite avant de retirer l'ancienne, le document n'est jamais absent de l'index
         self.client.upsert(corpus, points=points, wait=True)
-        stale = qm.Filter(must=[_match("document", document)], must_not=[_match("content_hash", content_hash)])
+        stale = qm.Filter(must=[_match("document_id", document_id)], must_not=[_match("content_hash", content_hash)])
         self.client.delete(corpus, points_selector=qm.FilterSelector(filter=stale), wait=True)
 
-    def delete_document(self, corpus: str, document: str) -> None:
+    def delete_document(self, corpus: str, document_id: str) -> None:
         if self.exists(corpus):
-            flt = qm.Filter(must=[_match("document", document)])
+            flt = qm.Filter(must=[_match("document_id", document_id)])
             self.client.delete(corpus, points_selector=qm.FilterSelector(filter=flt), wait=True)
 
     def documents(self, corpus: str) -> dict[str, int]:
         if not self.exists(corpus):
             return {}
-        hits = self.client.facet(corpus, key="document", exact=True, limit=100_000).hits
+        hits = self.client.facet(corpus, key="document_id", exact=True, limit=100_000).hits
         return {str(h.value): h.count for h in hits}
 
     def count(self, corpus: str) -> int:

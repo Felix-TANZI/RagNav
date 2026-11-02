@@ -8,8 +8,7 @@ import pytest
 
 from app.config import Settings
 from app.embeddings import Embedder
-from app.ingest.inventory import Entry
-from app.ingest.pipeline import ingest_corpus
+from app.ingest.pipeline import DocumentSource, index_document
 from app.store import VectorStore
 
 pytestmark = pytest.mark.live
@@ -35,11 +34,10 @@ def test_indexation_et_recherche_reelles(tmp_path):
                                    encoding="utf-8")
     (tmp_path / "b.md").write_text("# Sauvegarde\n\nLes machines virtuelles sont sauvegardées à 01 h 30.\n",
                                    encoding="utf-8")
-    entries = [Entry(n, n, "test", "1", date(2026, 10, 29)) for n in ("a.md", "b.md")]
+    docs = [DocumentSource(n, n, n, "test", "1", date(2026, 10, 29), tmp_path / n) for n in ("a.md", "b.md")]
     corpus, store, embedder = f"test_{uuid.uuid4().hex[:8]}", VectorStore.from_settings(settings), Embedder(settings)
     try:
-        report = ingest_corpus(tmp_path, entries, corpus, settings, embedder, store, log=lambda _: None)
-        assert report.indexed == {"a.md": 1, "b.md": 1}
+        assert [index_document(d, corpus, settings, embedder, store).chunks for d in docs] == [1, 1]
         hits = store.search(corpus, embedder.embed(["À quelle heure a lieu la sauvegarde ?"])[0], 2)
         assert hits[0].payload["document"] == "b.md"
     finally:

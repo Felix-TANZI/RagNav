@@ -2,89 +2,82 @@
 from datetime import date
 
 import pytest
-from qdrant_client import QdrantClient
 
-from app.config import Settings
-from app.ingest.inventory import Entry
-from app.ingest.pipeline import embedding_text, ingest_corpus
+from app.ingest.base import ConversionError
 from app.ingest.chunker import Chunk
-from app.store import StoreError, VectorStore
+from app.ingest.pipeline import DocumentSource, embedding_text, index_document
+from app.store import StoreError
 from tests.fakes import FakeEmbedder
 
-SETTINGS = Settings(_env_file=None, llm_api_key="cle-de-test", embed_model="faux-modele", chunk_words=60,
-                    chunk_overlap_words=10)
 
-
-def entry(name: str, title: str = "Titre") -> Entry:
-    return Entry(name, title, "Cellule de test", "1.0", date(2026, 10, 29))
+def source(path, title: str = "Titre", doc_id: str = "doc-1") -> DocumentSource:
+    return DocumentSource(doc_id, path.name, title, "Cellule de test", "1.0", date(2026, 10, 29), path)
 
 
 @pytest.fixture
-def corpus(tmp_path):
-    (tmp_path / "reseau.md").write_text("# Réseau\n\n## Pare-feu\n\nLe pare-feu GARDIEN filtre le port 51820.\n",
-                                        encoding="utf-8")
-    (tmp_path / "gpu.md").write_text("# GPU\n\n## Jobs\n\nLa commande gandal-gpu submit lance un job.\n",
-                                     encoding="utf-8")
-    return tmp_path
+def reseau(tmp_path):
+    f = tmp_path / "reseau.md"
+    f.write_text("# Réseau\n\n## Pare-feu\n\nLe pare-feu GARDIEN filtre le port 51820.\n", encoding="utf-8")
+    return f
 
 
-@pytest.fixture
-def store():
-    return VectorStore(QdrantClient(":memory:"), payload_indexes=False)
-
-
-def run(corpus, entries, store, embedder=None, **kwargs):
-    return ingest_corpus(corpus, entries, "navigation", SETTINGS, embedder or FakeEmbedder(), store,
-                         log=lambda _: None, **kwargs)
-
-
-def test_indexation_puis_documents_inchanges_sautes(corpus, store):
-    entries = [entry("reseau.md", "Réseau"), entry("gpu.md", "GPU")]
-    report = run(corpus, entries, store)
-    assert set(report.indexed) == {"reseau.md", "gpu.md"} and store.count("navigation") == 2
+def test_indexation_puis_document_inchange_saute(reseau, settings, store):
+    result = index_document(source(reseau), "navigation", settings, FakeEmbedder(), store)
+    assert result.chunks == 1 and store.count("navigation") == 1
     embedder = FakeEmbedder()
-    report = run(corpus, entries, store, embedder)
-    assert report.unchanged == ["reseau.md", "gpu.md"] and embedder.calls == 0
+    assert index_document(source(reseau), "navigation", settings, embedder, store) is None
+    assert embedder.calls == 0
 
 
-def test_document_modifie_remplace_sans_passage_perime(corpus, store):
-    entries = [entry("reseau.md", "Réseau")]
-    run(corpus, entries, store)
-    (corpus / "reseau.md").write_text("# Réseau\n\n## VPN\n\nLe VPN WireGuard écoute sur le port 51820.\n",
-                                      encoding="utf-8")
-    report = run(corpus, entries, store)
-    assert report.indexed == {"reseau.md": 1}
+def test_document_modifie_remplace_sans_passage_perime(reseau, settings, store):
+    index_document(source(reseau), "navigation", settings, FakeEmbedder(), store)
+    reseau.write_text("# Réseau\n\n## VPN\n\nLe VPN WireGuard écoute sur le port 51820.\n", encoding="utf-8")
+    index_document(source(reseau), "navigation", settings, FakeEmbedder(), store)
     hits = store.search("navigation", FakeEmbedder().embed(["VPN WireGuard"])[0], 10)
     assert [h.payload["section"] for h in hits] == ["VPN"]
 
 
-def test_document_retire_de_la_liste_supprime_de_l_index(corpus, store):
-    run(corpus, [entry("reseau.md"), entry("gpu.md")], store)
-    report = run(corpus, [entry("gpu.md")], store)
-    assert report.removed == ["reseau.md"] and store.documents("navigation") == {"gpu.md": 1}
+def test_metadonnees_modifiees_provoquent_une_reindexation(reseau, settings, store):
+    index_document(source(reseau, "Ancien titre"), "navigation", settings, FakeEmbedder(), store)
+    assert index_document(source(reseau, "Nouveau titre"), "navigation", settings, FakeEmbedder(), store) is not None
+    hits = store.search("navigation", FakeEmbedder().embed(["pare-feu"])[0], 10)
+    assert [h.payload["title"] for h in hits] == ["Nouveau titre"]
 
 
-def test_document_illisible_signale_sans_bloquer_les_autres(corpus, store):
-    (corpus / "abime.pdf").write_bytes(b"%PDF-1.7 abime")
-    report = run(corpus, [entry("abime.pdf"), entry("gpu.md")], store)
-    assert "abime.pdf" in report.failed and report.indexed == {"gpu.md": 1}
+def test_metadonnees_des_passages(reseau, settings, store):
+    index_document(source(reseau, "Plan réseau"), "navigation", settings, FakeEmbedder(), store)
+    payload = store.search("navigation", FakeEmbedder().embed(["GARDIEN"])[0], 1)[0].payload
+    assert payload["document_id"] == "doc-1" and payload["document"] == "reseau.md"
+    assert payload["title"] == "Plan réseau" and payload["section"] == "Pare-feu"
+    assert payload["section_path"] == "Réseau > Pare-feu" and payload["page"] is None
+    assert payload["version"] == "1.0" and payload["date"] == "2026-10-29" and "51820" in payload["text"]
 
 
-def test_metadonnees_des_passages(corpus, store):
-    run(corpus, [entry("gpu.md", "Procédure GPU")], store)
-    payload = store.search("navigation", FakeEmbedder().embed(["gandal-gpu"])[0], 1)[0].payload
-    assert payload["document"] == "gpu.md" and payload["title"] == "Procédure GPU"
-    assert payload["section"] == "Jobs" and payload["section_path"] == "GPU > Jobs"
-    assert payload["version"] == "1.0" and payload["date"] == "2026-10-29" and payload["page"] is None
-    assert "gandal-gpu submit" in payload["text"]
+def test_etapes_suivies_et_echec_de_lecture(tmp_path, settings, store):
+    bad = tmp_path / "abime.pdf"
+    bad.write_bytes(b"%PDF-1.7 abime")
+    stages = []
+    with pytest.raises(ConversionError):
+        index_document(source(bad), "navigation", settings, FakeEmbedder(), store, on_stage=stages.append)
+    assert stages == ["Vérification de l'index", "Lecture du document"]
 
 
-def test_changement_de_modele_detecte(corpus, store):
-    run(corpus, [entry("gpu.md")], store)
+def test_changement_de_modele_detecte(reseau, settings, store):
+    index_document(source(reseau), "navigation", settings, FakeEmbedder(), store)
     with pytest.raises(StoreError, match="réindexer"):
         store.check_model("navigation", "autre-modele")
 
 
-def test_texte_vectorise_avec_contexte_sans_titre_en_double():
+def test_suppression_et_comptage_par_document(reseau, tmp_path, settings, store):
+    other = tmp_path / "gpu.md"
+    other.write_text("# GPU\n\nLa commande gandal-gpu submit lance un job.\n", encoding="utf-8")
+    index_document(source(reseau), "navigation", settings, FakeEmbedder(), store)
+    index_document(source(other, doc_id="doc-2"), "navigation", settings, FakeEmbedder(), store)
+    assert store.documents("navigation") == {"doc-1": 1, "doc-2": 1}
+    store.delete_document("navigation", "doc-1")
+    assert store.documents("navigation") == {"doc-2": 1}
+
+
+def test_texte_vectorise_avec_contexte_sans_titre_en_double(tmp_path):
     chunk = Chunk("doc.md", ("Guide", "1. VPN"), None, "Installer WireGuard.", 0)
-    assert embedding_text(entry("doc.md", "Guide"), chunk) == "Guide > 1. VPN\n\nInstaller WireGuard."
+    assert embedding_text(source(tmp_path / "doc.md", "Guide"), chunk) == "Guide > 1. VPN\n\nInstaller WireGuard."

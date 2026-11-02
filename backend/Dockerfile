@@ -19,9 +19,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY alembic.ini .
+COPY migrations migrations
 COPY app app
-RUN useradd --create-home gandal
+RUN useradd --create-home gandal && mkdir -p /app/data && chown gandal:gandal /app/data
 USER gandal
+VOLUME /app/data
 
 EXPOSE 8090
 CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090"]
