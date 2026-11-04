@@ -33,4 +33,6 @@ def test_identifiants_uniques_et_cas_connus():
 def test_reponse_presente_dans_la_section_indiquee(q, sections):
     text = sections.get((q["document"], q["section"]))
     assert text is not None, f"section introuvable {q['document']} / {q['section']}"
+    if q["cas"] == "CU3":
+        text = ENTRIES[q["document"]].title
     assert all(k in text for k in q["mots_cles"]), q["mots_cles"]

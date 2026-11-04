@@ -3,7 +3,6 @@
 import contextvars
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -20,9 +19,9 @@ from app.store import StoreError, VectorStore
 INDEXATION = EventCategory.INDEXATION
 
 
-def document_source(doc: Document) -> DocumentSource:
+def document_source(doc: Document, settings: Settings) -> DocumentSource:
     return DocumentSource(doc.id, doc.filename, doc.title, doc.source, doc.version, doc.document_date,
-                          Path(doc.storage_path))
+                          settings.document_path(doc.storage_path))
 
 
 def _cause(error: Exception) -> str:
@@ -89,7 +88,7 @@ class IndexWorker:
                 stage = name
 
             try:
-                result = index_document(document_source(doc), self.corpus, self.settings, self.embedder, self.store,
+                result = index_document(document_source(doc, self.settings), self.corpus, self.settings, self.embedder, self.store,
                                         force, on_stage)
             except Exception as e:
                 doc.status, doc.error = DocumentStatus.FAILED, f"{stage}, {_cause(e)}"
@@ -105,7 +104,8 @@ class IndexWorker:
                 doc.chunks, doc.ocr_pages = result.chunks, result.ocr_pages
             doc.status, doc.indexed_at = DocumentStatus.INDEXED, utcnow()
             session.commit()
-            storage.remove_other_versions(self.settings.documents_dir / doc.id, Path(doc.storage_path))
+            storage.remove_other_versions(self.settings.documents_dir / doc.id,
+                                          self.settings.document_path(doc.storage_path))
             if result is None:
                 self.events.info(INDEXATION, "indexation_inchangee", f"{doc.filename}, déjà à jour dans l'index",
                                  document_id=doc.id)

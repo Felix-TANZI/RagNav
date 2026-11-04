@@ -99,6 +99,27 @@ class FormatsOut(BaseModel):
     max_upload_mb: int
 
 
+class ChatIn(BaseModel):
+    message: str = Field(min_length=1, examples=["Sur quel port écoute LiteLLM ?"])
+    corpus: str = Field(default="navigation", pattern=r"^[a-z0-9_-]{1,40}$", description="Corpus interrogé")
+    top_k: int | None = Field(default=None, ge=1, le=20, description="Nombre de passages retrouvés, 5 par défaut")
+
+
+class SourceOut(BaseModel):
+    document: str = Field(description="Nom du fichier")
+    title: str
+    section: str
+    page: int | None = Field(description="Page d'origine, pour les PDF")
+    version: str
+    score: float = Field(description="Similarité entre la question et le passage, de 0 à 1")
+
+
+class ChatOut(BaseModel):
+    answer: str = Field(examples=["LiteLLM écoute sur le port 4000 du serveur EMILIA [1]."])
+    found: bool = Field(description="Faux si l'information est absente du corpus")
+    sources: list[SourceOut] = Field(description="Sources citées, la source n correspond à la citation [n]")
+
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -51,7 +51,7 @@ def main() -> int:
                                                           settings.max_upload_mb * 1024 * 1024)
             session.add(Document(id=document_id, filename=filename, title=entry.title, source=entry.source,
                                  version=entry.version, document_date=entry.date, sha256=sha256, size=size,
-                                 storage_path=str(path)))
+                                 storage_path=storage.relative_to_documents(path, settings.documents_dir)))
             session.commit()
             events.info(EventCategory.DOCUMENTS, "document_importe", f"{filename} importé depuis {INVENTORY}",
                         document_id=document_id)

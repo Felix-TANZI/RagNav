@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from app.models import Document
 from app.storage import safe_filename
 
 GUIDE = "# Guide\n\n## VPN\n\nLe VPN WireGuard écoute sur le port 51820 du pare-feu GARDIEN.\n"
@@ -25,6 +26,9 @@ def test_ajout_puis_indexation_en_arriere_plan(client, admin, store):
     doc = client.get(f"/admin/documents/{r.json()['id']}", headers=admin).json()
     assert doc["status"] == "indexed" and doc["chunks"] == 1 and doc["error"] is None
     assert store.documents("navigation") == {doc["id"]: 1}
+    with client.app.state.sessions() as session:
+        stored = session.get(Document, doc["id"]).storage_path
+    assert stored.startswith(f"{doc['id']}/") and stored.endswith("/guide.md") and "\\" not in stored
 
 
 def test_doublon_format_et_taille_refuses(client, admin, settings):

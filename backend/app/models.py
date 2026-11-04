@@ -48,6 +48,7 @@ class EventCategory(str, enum.Enum):
     CLES = "cles"
     DOCUMENTS = "documents"
     API = "api"
+    CHAT = "chat"
     SYSTEME = "systeme"
 
 

@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY alembic.ini .
 COPY migrations migrations
 COPY app app
+COPY scripts scripts
 RUN useradd --create-home gandal && mkdir -p /app/data && chown gandal:gandal /app/data
 USER gandal
 VOLUME /app/data

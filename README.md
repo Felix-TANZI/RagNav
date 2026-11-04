@@ -128,6 +128,29 @@ cd backend
 
 Sur le corpus de test, avec 5 passages retrouvés : rappel@1 70 %, rappel@3 95 %, rappel@5 100 %, MRR 0,835.
 
+## Assistant, route /chat
+
+`POST /chat` reçoit `{"message": "...", "corpus": "navigation", "top_k": 5}` et renvoie `answer`, `found` et
+`sources` (document, titre, section, page, version, score). La source n correspond à la citation [n] de la réponse.
+Accès avec un compte (client ou admin) ou une clé de service dans l'en-tête `X-API-Key`.
+
+Déroulement (Chapitre 2, section 3.3) : la question est vectorisée, les 5 passages les plus proches sont retrouvés,
+ceux sous le seuil `MIN_SCORE` (0,40) sont écartés. S'il n'en reste aucun, l'assistant refuse sans appeler le
+modèle. Sinon le modèle reçoit les extraits numérotés et la consigne de citer, de ne rien inventer et de répondre
+« Je ne trouve pas cette information dans la documentation GANDAL. » si les extraits ne suffisent pas. Les
+citations sont ensuite vérifiées et renumérotées, une citation inventée est retirée.
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m scripts.evaluate                    # évaluation complète, détail dans eval/resultats.csv
+.\.venv\Scripts\python.exe -m scripts.evaluate --ids Q01,Q19,H01  # rejouer quelques questions
+```
+
+Sur le corpus de test : refus justifiés 6/6, faux refus 0/20, bonne section citée 19/20. Sur ce PC sans GPU
+(i7-8665U), une réponse prend environ 75 s (médiane), dont l'essentiel pour la lecture du prompt par le modèle. Sur
+le GPU de GANDAL la même réponse prend quelques secondes. `TOP_K=3` ramène la médiane à 50 s mais fait refuser à
+tort une question sur un nom exact (Q01), ce que la recherche hybride BM25 de l'étape 6 doit corriger.
+
 ## Comptes et sécurité
 
 | Rôle | Création | Droits |
@@ -163,6 +186,21 @@ cd ..\frontend
 npm run build; npm run lint
 ```
 
+## Vérifier une étape
+
+Toute la chaîne tourne en conteneurs sur le PC, Ollama restant installé sur Windows.
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose exec -T backend python -m scripts.import_corpus --corpus-dir /corpus   # première fois
+docker compose exec -T backend python -m scripts.ingest --reset
+```
+
+Puis ouvrir <http://127.0.0.1:8090/docs>. Le conteneur a sa propre base (volume `gandal_data`) et partage Qdrant
+avec le backend lancé à la main : après être passé de l'un à l'autre, `scripts.ingest --reset` remet l'index en
+accord avec la base utilisée. Lancer les commandes `docker compose exec` depuis PowerShell, Git Bash réécrit
+`/corpus` en chemin Windows.
+
 ## Déployer sur la VM150
 
 ```bash
@@ -180,6 +218,6 @@ curl localhost:8090/health
 | 1 | Corpus de test fictif, lecture et découpage par section, jeu d'évaluation | fait |
 | 2 | Index, embeddings bge-m3 et collection Qdrant `navigation`, rappel@k | fait |
 | 3 | Comptes (admin, client, clés de service), API des documents, journal des événements | fait |
-| 4 | Route `/chat`, seuil de pertinence, citations et refus | à faire |
+| 4 | Route `/chat`, seuil de pertinence, citations vérifiées, refus, évaluation de bout en bout | fait |
 | 5 | Interface, espace admin (documents) et espace client (questions) | à faire |
 | 6 | Évaluation (rappel, fidélité, citations, refus), BM25 si nécessaire, runbook | à faire |

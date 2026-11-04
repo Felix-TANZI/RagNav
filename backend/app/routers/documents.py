@@ -76,7 +76,7 @@ def upload_document(request: Request, file: UploadFile = File(...), title: str =
         raise
     doc = Document(id=document_id, filename=filename, title=title.strip(), source=source.strip(),
                    version=version.strip(), document_date=document_date, sha256=sha256, size=size,
-                   storage_path=str(path), uploaded_by=admin.id)
+                   storage_path=storage.relative_to_documents(path, settings.documents_dir), uploaded_by=admin.id)
     session.add(doc)
     session.commit()
     events.info(DOCS, "document_ajoute", f"{doc.filename} ajouté ({doc.size} octets), indexation en attente",
@@ -123,9 +123,10 @@ def replace_file(document_id: str, request: Request, file: UploadFile = File(...
     try:
         _check_duplicate(session, sha256, doc.id)
     except HTTPException:
-        storage.remove_other_versions(settings.documents_dir / doc.id, Path(doc.storage_path))
+        storage.remove_other_versions(settings.documents_dir / doc.id, settings.document_path(doc.storage_path))
         raise
-    doc.filename, doc.sha256, doc.size, doc.storage_path = filename, sha256, size, str(path)
+    doc.filename, doc.sha256, doc.size = filename, sha256, size
+    doc.storage_path = storage.relative_to_documents(path, settings.documents_dir)
     if version and version.strip():
         doc.version = version.strip()
     doc.status, doc.error = DocumentStatus.PENDING, None
@@ -138,10 +139,10 @@ def replace_file(document_id: str, request: Request, file: UploadFile = File(...
 
 @router.get("/{document_id}/file", response_class=FileResponse, summary="Télécharger le fichier d'origine",
             responses={404: {"model": ErrorOut}})
-def download_file(document_id: str, session: Session = Depends(db_session),
+def download_file(document_id: str, session: Session = Depends(db_session), settings: Settings = Depends(app_settings),
                   _: User = Depends(require_admin)) -> FileResponse:
     doc = _get(session, document_id)
-    return FileResponse(doc.storage_path, filename=doc.filename)
+    return FileResponse(settings.document_path(doc.storage_path), filename=doc.filename)
 
 
 @router.post("/{document_id}/reindex", response_model=DocumentOut, status_code=status.HTTP_202_ACCEPTED,

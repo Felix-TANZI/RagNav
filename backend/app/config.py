@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://127.0.0.1:6333"
     qdrant_timeout: float = Field(default=30.0, gt=0)
     default_corpus: str = "navigation"
+    top_k: int = Field(default=5, ge=1, le=20)
+    min_score: float = Field(default=0.40, ge=0, le=1)
+    temperature: float = Field(default=0.0, ge=0, le=2)
+    max_tokens: int = Field(default=512, ge=32)
+    llm_timeout: float = Field(default=300.0, gt=0)
+    max_question_chars: int = Field(default=1000, ge=10)
+    chat_per_minute: int = Field(default=20, ge=1)
     cors_origins: list[str] = ["http://localhost:5173"]
     health_timeout: float = 5.0
 
@@ -53,6 +60,9 @@ class Settings(BaseSettings):
     @property
     def documents_dir(self) -> Path:
         return self.data_dir / "documents"
+
+    def document_path(self, storage_path: str) -> Path:
+        return self.documents_dir / storage_path
 
 
 @lru_cache

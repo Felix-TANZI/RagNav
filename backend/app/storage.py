@@ -46,6 +46,10 @@ def save_version(source: BinaryIO, document_dir: Path, filename: str, max_bytes:
         temp.unlink(missing_ok=True)
 
 
+def relative_to_documents(path: Path, documents_dir: Path) -> str:
+    return path.relative_to(documents_dir).as_posix()
+
+
 def remove_other_versions(document_dir: Path, keep: Path) -> None:
     for version_dir in document_dir.iterdir():
         if version_dir.is_dir() and version_dir != keep.parent:

@@ -1,0 +1,9 @@
+# docker-compose.dev.yml
+# Essai complet sur le PC, à combiner avec docker-compose.yml (voir README, Vérifier une étape)
+services:
+  backend:
+    environment:
+      LLM_BASE_URL: http://host.docker.internal:11434/v1
+      COOKIE_SECURE: "false"
+    volumes:
+      - ./corpus:/corpus:ro

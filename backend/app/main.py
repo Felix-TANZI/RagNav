@@ -22,14 +22,17 @@ from app.deps import app_settings, client_ip
 from app.embeddings import Embedder
 from app.events import EventLog, RequestContext, current_request, exception_detail
 from app.health import check_models, check_qdrant
+from app.llm import ChatModel
 from app.migrate import run_migrations
 from app.models import EventCategory
+from app.rag import Assistant
 from app.ratelimit import RateLimiter
-from app.routers import auth, documents, events, service_keys, users
+from app.routers import auth, chat, documents, events, service_keys, users
 from app.store import VectorStore
 from app.worker import IndexWorker
 
 TAGS = [
+    {"name": "Assistant", "description": "Questions sur le projet GANDAL, réponses citant leurs sources"},
     {"name": "Supervision", "description": "État du service et de ses dépendances"},
     {"name": "Authentification", "description": "Inscription des clients, connexion, session et mot de passe"},
     {"name": "Comptes", "description": "Gestion des comptes par les admins"},
@@ -60,7 +63,7 @@ def _with_request_id(response: JSONResponse) -> JSONResponse:
 
 
 def create_app(settings: Settings | None = None, *, store: VectorStore | None = None,
-               embedder: Embedder | None = None) -> FastAPI:
+               embedder: Embedder | None = None, model: ChatModel | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
@@ -77,6 +80,7 @@ def create_app(settings: Settings | None = None, *, store: VectorStore | None = 
         event_log.prune(settings.events_retention_days)
         app.state.store = store or VectorStore.from_settings(settings)
         app.state.embedder = embedder or Embedder(settings)
+        app.state.assistant = Assistant(settings, app.state.embedder, app.state.store, model or ChatModel(settings))
         app.state.worker = worker = IndexWorker(sessions, settings, app.state.embedder, app.state.store, event_log)
         worker.start()
         event_log.info(EventCategory.SYSTEME, "demarrage", f"GANDAL-AI {__version__} démarré")
@@ -91,7 +95,8 @@ def create_app(settings: Settings | None = None, *, store: VectorStore | None = 
                               "à communiquer en cas d'erreur pour la retrouver dans le journal.")
     app.state.settings = settings
     app.state.limiters = {"login": RateLimiter(settings.login_per_minute, 60),
-                          "register": RateLimiter(settings.register_per_hour, 3600)}
+                          "register": RateLimiter(settings.register_per_hour, 3600),
+                          "chat": RateLimiter(settings.chat_per_minute, 60)}
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -132,6 +137,6 @@ def create_app(settings: Settings | None = None, *, store: VectorStore | None = 
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,
                        allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Request-ID"])
     app.add_api_route("/health", health, methods=["GET"], tags=["Supervision"], summary="État du service")
-    for router in (auth.router, users.router, service_keys.router, documents.router, events.router):
+    for router in (chat.router, auth.router, users.router, service_keys.router, documents.router, events.router):
         app.include_router(router)
     return app
