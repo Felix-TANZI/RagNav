@@ -16,7 +16,7 @@ Auteurs Felix NZIKO, Atchine Hanniel. Référence de conception le Chapitre 2 va
 | Génération | qwen3:4b-instruct-2507 via Ollama sur le PC, via LiteLLM (EMILIA:4000) sur GANDAL |
 | Index vectoriel | Qdrant 1.19.2, une collection par corpus (`navigation`) |
 | Recherche par mots-clés | BM25 natif Qdrant, prévu pour l'architecture B si l'évaluation le justifie |
-| Interface | React + TypeScript (Vite), espace client (questions) et espace admin (documents) |
+| Interface | React 19 + TypeScript (Vite), servie par nginx sur le port 8080, espace client et espace admin |
 
 Les modèles sont appelés par l'API compatible OpenAI, la même pour Ollama et LiteLLM. Passer du PC à GANDAL
 ne demande que de changer `LLM_BASE_URL` et `LLM_API_KEY` dans `backend/.env`.
@@ -30,10 +30,10 @@ Aucun secret n'est écrit dans le code. Les clés n'ont pas de valeur par défau
 | --- | --- |
 | `backend/` | Service GANDAL-AI (FastAPI), tests pytest, Dockerfile |
 | `backend/app/ingest/` | Lecture des documents, découpage en passages, liste du corpus |
-| `frontend/` | Interface React (client et admin) |
+| `frontend/` | Interface React (client et admin), tests Vitest, Dockerfile et configuration nginx |
 | `corpus/` | Documents indexés et leur liste `inventaire.csv`, `corpus/test/` contient le corpus de test fictif |
 | `eval/questions.jsonl` | Jeu de questions d'évaluation (réponse attendue, document, section) |
-| `docker-compose.yml` | Qdrant (PC et VM150) et backend (VM150) |
+| `docker-compose.yml` | Qdrant, backend et interface (VM150), `docker-compose.dev.yml` adapte au PC |
 
 ## Corpus
 
@@ -99,11 +99,12 @@ Copy-Item .env.example .env       # puis renseigner les secrets (voir Comptes et
 
 # Frontend (autre terminal)
 cd frontend
-npm install
+npx npm@11.6.2 ci       # npm 10.9 livré avec Node 22 échoue sur ce lockfile
 npm run dev
 ```
 
-Ouvrir <http://localhost:5173>, la page affiche l'état du serveur de modèles et de Qdrant.
+Ouvrir <http://localhost:5173>. Vite renvoie `/api` vers le backend sur le port 8090, comme nginx en conteneur, ce
+qui demande `REFRESH_COOKIE_PATH=/api/auth` et `COOKIE_SECURE=false` dans `backend/.env`.
 Documentation de l'API sur <http://127.0.0.1:8090/docs>.
 
 ## Index
@@ -151,6 +152,22 @@ Sur le corpus de test : refus justifiés 6/6, faux refus 0/20, bonne section cit
 le GPU de GANDAL la même réponse prend quelques secondes. `TOP_K=3` ramène la médiane à 50 s mais fait refuser à
 tort une question sur un nom exact (Q01), ce que la recherche hybride BM25 de l'étape 6 doit corriger.
 
+`POST /chat/stream` renvoie la même réponse au fil de l'eau (Server-Sent Events `statut`, `texte`, `fin`,
+`erreur`), c'est la route utilisée par l'interface.
+
+## Interface
+
+Elle suit la charte graphique GANDAL (version 3) : police Geist, couleurs et rayons repris comme variables CSS
+dans `frontend/src/styles/tokens.css`, contrastes AA vérifiés par un test. Français par défaut, anglais au choix.
+
+| Espace | Pages |
+| --- | --- |
+| Client | Accueil (état des services, question, réponse en continu avec citations et sources), Documentation (documents consultables), Mon compte |
+| Admin | Documents (ajout, remplacement, informations, réindexation, suppression), Comptes, Clés de service, Journal |
+
+Une citation [n] ou une source ouvre le document à la page citée. Le jeton d'accès reste en mémoire, la session est
+reprise par le cookie de renouvellement. Le logo est provisoire en attendant le logo officiel.
+
 ## Comptes et sécurité
 
 | Rôle | Création | Droits |
@@ -161,7 +178,7 @@ tort une question sur un nom exact (Q01), ce que la recherche hybride BM25 de l'
 
 - Mots de passe hachés en Argon2, 12 caractères au moins, blocage 15 min après 5 échecs.
 - Jeton d'accès JWT de 15 min, à garder en mémoire côté interface. Jeton de renouvellement dans un cookie HttpOnly
-  SameSite=Strict limité à `/auth`, renouvelé à chaque usage, session de 8 h au plus. Un jeton réutilisé révoque
+  SameSite=Strict limité à `REFRESH_COOKIE_PATH` (`/api/auth` derrière nginx), renouvelé à chaque usage, session de 8 h au plus. Un jeton réutilisé révoque
   toute la session.
 - Limite de débit par adresse IP sur la connexion et l'inscription.
 - Secrets uniquement dans `backend/.env` : `LLM_API_KEY`, `JWT_SECRET` (32 caractères au moins), `ADMIN_PASSWORD`.
@@ -183,8 +200,10 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest           # tests unitaires, sans Ollama ni Qdrant
 .\.venv\Scripts\python.exe -m pytest -m live   # vérifie les vrais services de la machine
 cd ..\frontend
-npm run build; npm run lint
+npm test; npm run lint; npm run build
 ```
+
+133 tests backend, 29 tests frontend (pages, citations, réponse en continu, contrastes de la charte).
 
 ## Vérifier une étape
 
@@ -196,7 +215,7 @@ docker compose exec -T backend python -m scripts.import_corpus --corpus-dir /cor
 docker compose exec -T backend python -m scripts.ingest --reset
 ```
 
-Puis ouvrir <http://127.0.0.1:8090/docs>. Le conteneur a sa propre base (volume `gandal_data`) et partage Qdrant
+Puis ouvrir l'interface sur <http://127.0.0.1:8080> et l'API sur <http://127.0.0.1:8090/docs>. Le conteneur a sa propre base (volume `gandal_data`) et partage Qdrant
 avec le backend lancé à la main : après être passé de l'un à l'autre, `scripts.ingest --reset` remet l'index en
 accord avec la base utilisée. Lancer les commandes `docker compose exec` depuis PowerShell, Git Bash réécrit
 `/corpus` en chemin Windows.
@@ -210,6 +229,9 @@ docker compose up -d
 curl localhost:8090/health
 ```
 
+L'interface est sur le port 8080. Avec `COOKIE_SECURE=true` le navigateur n'envoie le cookie de session qu'en HTTPS,
+il faut donc placer l'interface derrière le proxy HTTPS de GANDAL.
+
 ## Étapes
 
 | Étape | Contenu | État |
@@ -219,5 +241,5 @@ curl localhost:8090/health
 | 2 | Index, embeddings bge-m3 et collection Qdrant `navigation`, rappel@k | fait |
 | 3 | Comptes (admin, client, clés de service), API des documents, journal des événements | fait |
 | 4 | Route `/chat`, seuil de pertinence, citations vérifiées, refus, évaluation de bout en bout | fait |
-| 5 | Interface, espace admin (documents) et espace client (questions) | à faire |
+| 5 | Interface selon la charte GANDAL, espace client (questions) et espace admin (documents, comptes, clés, journal) | fait |
 | 6 | Évaluation (rappel, fidélité, citations, refus), BM25 si nécessaire, runbook | à faire |

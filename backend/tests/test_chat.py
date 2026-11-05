@@ -1,4 +1,6 @@
 # backend/tests/test_chat.py
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -22,6 +24,11 @@ class FakeModel:
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
+
+    def stream(self, messages):
+        answer = self.complete(messages)
+        for i in range(0, len(answer), 10):
+            yield answer[i:i + 10]
 
 
 @pytest.fixture
@@ -68,7 +75,8 @@ def test_refus_du_modele(client, model, settings):
 
 
 def test_acces_client_cle_de_service_ou_refuse(client):
-    client.post("/auth/register", json={"email": "client@test.cm", "password": "mot-de-passe-client"})
+    client.post("/auth/register", json={"name": "Alice", "email": "client@test.cm",
+                                        "password": "mot-de-passe-client"})
     assert ask(client, login(client, "client@test.cm", "mot-de-passe-client")).status_code == 200
     key = client.post("/admin/service-keys", headers=login(client), json={"name": "frontend"}).json()["key"]
     assert ask(client, {"X-API-Key": key}).status_code == 200
@@ -106,3 +114,51 @@ def test_limite_de_debit_par_appelant(client, settings):
     client.app.state.limiters["chat"].limit = 2
     admin = login(client)
     assert [ask(client, admin).status_code for _ in range(3)] == [200, 200, 429]
+
+
+def events_of(response) -> list[tuple[str, dict]]:
+    parsed = []
+    for block in response.text.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.splitlines())
+        parsed.append((lines["event"], json.loads(lines["data"])))
+    return parsed
+
+
+def test_reponse_en_continu(client, settings):
+    settings.min_score = 0.0
+    r = client.post("/chat/stream", headers=login(client), json={"message": "Port de LiteLLM ?"})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
+    stream = events_of(r)
+    assert [kind for kind, _ in stream[:2]] == ["statut", "statut"] and stream[1][1] == {"etape": "redaction"}
+    assert "".join(d["texte"] for k, d in stream if k == "texte") == "LiteLLM écoute sur le port 4000 [2]. Voir aussi [9]."
+    kind, final = stream[-1]
+    assert kind == "fin" and final["answer"] == "LiteLLM écoute sur le port 4000 [1]. Voir aussi."
+    assert final["sources"][0]["document_id"] and final["found"] is True
+
+
+def test_refus_en_continu_sans_modele(client, model, settings):
+    settings.min_score = 0.99
+    stream = events_of(client.post("/chat/stream", headers=login(client), json={"message": "Recette du ndolé ?"}))
+    assert [k for k, _ in stream] == ["statut", "fin"] and stream[-1][1]["found"] is False and model.calls == []
+
+
+def test_panne_en_continu_signalee(client, model, settings):
+    settings.min_score = 0.0
+    model.answer = LLMError("serveur de modèles injoignable")
+    r = client.post("/chat/stream", headers=login(client), json={"message": "Port de LiteLLM ?"})
+    kind, data = events_of(r)[-1]
+    assert kind == "erreur" and data["request_id"] == r.headers["x-request-id"] and data["request_id"] in data["detail"]
+
+
+def test_documentation_consultable_et_source_ouvrable(client, settings):
+    settings.min_score = 0.0
+    client.post("/auth/register", json={"name": "Alice", "email": "lectrice@test.cm", "password": "mot-de-passe-client"})
+    reader = login(client, "lectrice@test.cm", "mot-de-passe-client")
+    documents = client.get("/documents", headers=reader).json()
+    assert [d["title"] for d in documents] == ["Architecture GANDAL"] and documents[0]["chunks"] == 2
+    source = ask(client, reader).json()["sources"][0]
+    opened = client.get(f"/documents/{source['document_id']}/file", headers=reader)
+    assert opened.status_code == 200 and "inline" in opened.headers["content-disposition"]
+    assert "LiteLLM" in opened.text
+    assert client.get("/documents").status_code == 401
+    assert client.get("/documents/inconnu/file", headers=reader).status_code == 404

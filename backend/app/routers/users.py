@@ -46,7 +46,7 @@ def create_user(body: UserCreateIn, session: Session = Depends(db_session), sett
     email = body.email.lower()
     if session.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "Un compte existe déjà avec cette adresse")
-    user = User(email=email, password_hash=hash_password(body.password), role=body.role)
+    user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password), role=body.role)
     session.add(user)
     session.commit()
     events.info(EventCategory.COMPTES, "compte_cree", f"compte {body.role.value} {email} créé")

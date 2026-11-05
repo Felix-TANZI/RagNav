@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr = Field(min_length=1)
     jwt_secret: SecretStr = Field(min_length=32)
     admin_email: EmailStr | None = None
+    admin_name: str = "Administrateur"
     admin_password: SecretStr | None = None
 
     llm_base_url: str = "http://127.0.0.1:11434/v1"
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     access_token_minutes: int = Field(default=15, ge=1, le=60)
     session_hours: int = Field(default=8, ge=1, le=24)
     cookie_secure: bool = True
+    refresh_cookie_path: str = "/auth"
     password_min_length: int = Field(default=12, ge=8)
     login_max_failures: int = Field(default=5, ge=1)
     lockout_minutes: int = Field(default=15, ge=1)

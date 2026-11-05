@@ -12,13 +12,12 @@ from app.config import Settings
 from app.deps import app_settings, current_user, db_session, event_log, rate_limited, unauthorized
 from app.events import EventLog
 from app.models import EventCategory, RefreshToken, Role, User, new_id, utcnow
-from app.schemas import ErrorOut, PasswordChangeIn, RegisterIn, TokenOut, UserOut
+from app.schemas import ErrorOut, PasswordChangeIn, ProfileUpdateIn, RegisterIn, TokenOut, UserOut
 from app.security import create_access_token, digest, hash_password, new_opaque_token, verify_password
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 
 REFRESH_COOKIE = "gandal_refresh"
-COOKIE_PATH = "/auth"
 INVALID_LOGIN = "E-mail ou mot de passe incorrect, ou compte temporairement bloqué"
 AUTH = EventCategory.AUTHENTIFICATION
 
@@ -32,12 +31,12 @@ def check_password_policy(password: str, settings: Settings) -> None:
 def _set_cookie(response: Response, raw: str, expires_at: datetime, settings: Settings) -> None:
     max_age = max(0, int((expires_at - utcnow()).total_seconds()))
     response.set_cookie(REFRESH_COOKIE, raw, max_age=max_age, httponly=True, secure=settings.cookie_secure,
-                        samesite="strict", path=COOKIE_PATH)
+                        samesite="strict", path=settings.refresh_cookie_path)
 
 
 def _clear_cookie(response: Response, settings: Settings) -> None:
-    response.delete_cookie(REFRESH_COOKIE, path=COOKIE_PATH, httponly=True, secure=settings.cookie_secure,
-                           samesite="strict")
+    response.delete_cookie(REFRESH_COOKIE, path=settings.refresh_cookie_path, httponly=True,
+                           secure=settings.cookie_secure, samesite="strict")
 
 
 def _reject(detail: str, settings: Settings) -> JSONResponse:
@@ -79,7 +78,7 @@ def register(body: RegisterIn, session: Session = Depends(db_session), settings:
     email = body.email.lower()
     if session.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "Un compte existe déjà avec cette adresse")
-    user = User(email=email, password_hash=hash_password(body.password), role=Role.CLIENT)
+    user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password), role=Role.CLIENT)
     session.add(user)
     session.commit()
     events.info(AUTH, "inscription", f"compte client {email} créé", actor=email)
@@ -160,6 +159,13 @@ def logout(request: Request, response: Response, session: Session = Depends(db_s
 
 @router.get("/me", response_model=UserOut, summary="Compte connecté", responses={401: {"model": ErrorOut}})
 def me(user: User = Depends(current_user)) -> User:
+    return user
+
+
+@router.patch("/me", response_model=UserOut, summary="Modifier son prénom", responses={401: {"model": ErrorOut}})
+def update_me(body: ProfileUpdateIn, user: User = Depends(current_user), session: Session = Depends(db_session)) -> User:
+    user.name = body.name.strip()
+    session.commit()
     return user
 
 

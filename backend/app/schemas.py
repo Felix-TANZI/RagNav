@@ -13,6 +13,7 @@ class ErrorOut(BaseModel):
 
 
 class RegisterIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80, description="Prénom affiché dans l'interface", examples=["Alice"])
     email: EmailStr = Field(examples=["prenom.nom@exemple.cm"])
     password: str = Field(max_length=128, description="Au moins 12 caractères")
 
@@ -33,6 +34,7 @@ class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    name: str
     email: EmailStr
     role: Role
     is_active: bool
@@ -42,6 +44,10 @@ class UserOut(BaseModel):
 
 class UserCreateIn(RegisterIn):
     role: Role = Role.CLIENT
+
+
+class ProfileUpdateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
 
 
 class UserUpdateIn(BaseModel):
@@ -105,7 +111,20 @@ class ChatIn(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=20, description="Nombre de passages retrouvés, 5 par défaut")
 
 
+class LibraryDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    filename: str
+    source: str
+    version: str
+    document_date: date
+    chunks: int | None
+
+
 class SourceOut(BaseModel):
+    document_id: str = Field(description="Identifiant du document, pour l'ouvrir avec GET /documents/{id}/file")
     document: str = Field(description="Nom du fichier")
     title: str
     section: str

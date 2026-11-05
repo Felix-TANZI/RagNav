@@ -1,5 +1,5 @@
 # docker-compose.yml
-# Sur le PC, seul Qdrant tourne en conteneur (docker compose up -d qdrant), sur la VM150 tout tourne
+# Interface (8080), GANDAL-AI (8090) et Qdrant, le backend ne fait confiance à X-Forwarded-For que venant de nginx
 name: gandal-ai
 
 services:
@@ -10,6 +10,8 @@ services:
       - "127.0.0.1:6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    networks:
+      - gandal
 
   backend:
     build: ./backend
@@ -21,10 +23,31 @@ services:
     env_file: backend/.env
     environment:
       QDRANT_URL: http://qdrant:6333
+      REFRESH_COOKIE_PATH: /api/auth
+      FORWARDED_ALLOW_IPS: 172.28.0.10
     volumes:
       - gandal_data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - gandal
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:8080"
+    networks:
+      gandal:
+        ipv4_address: 172.28.0.10
+
+networks:
+  gandal:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
 
 volumes:
   qdrant_data:

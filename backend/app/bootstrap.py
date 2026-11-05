@@ -26,7 +26,7 @@ def ensure_first_admin(session: Session, settings: Settings) -> bool:
     if session.scalar(select(User.id).where(User.email == email)):
         log.error("%s existe déjà comme compte client, il n'est pas promu admin automatiquement", email)
         return False
-    session.add(User(email=email, password_hash=hash_password(password), role=Role.ADMIN))
+    session.add(User(email=email, name=settings.admin_name, password_hash=hash_password(password), role=Role.ADMIN))
     session.commit()
     log.info("premier admin %s créé", email)
     return True

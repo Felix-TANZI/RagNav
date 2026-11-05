@@ -1,0 +1,112 @@
+/* frontend/src/styles/base.css */
+/* Échelle typographique de l'application (charte, page 14), focus visible de 3 px et mouvement réduit */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--police);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--texte-principal);
+  background: var(--surface-canevas);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.texte-display {
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.texte-h1 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+}
+
+.texte-h2 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+.texte-h3 {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.texte-fort {
+  font-weight: 500;
+}
+
+.texte-petit {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.texte-legende {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--texte-tertiaire);
+}
+
+.texte-secondaire {
+  color: var(--texte-secondaire);
+}
+
+.mono {
+  font-family: var(--police-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+a {
+  color: var(--accent-defaut);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--rayon-bouton);
+}
+
+.visuellement-cache {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

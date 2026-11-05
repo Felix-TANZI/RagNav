@@ -1,0 +1,78 @@
+/* frontend/src/styles/tokens.css */
+/* Variables de la charte graphique GANDAL v3, mêmes noms que les variables Figma (surface/app devient --surface-app) */
+:root {
+  --neutre-0: #ffffff;
+  --neutre-25: #fafbfd;
+  --neutre-50: #f4f6fa;
+  --neutre-100: #ebeef4;
+  --neutre-200: #dde2eb;
+  --neutre-300: #c3cad7;
+  --neutre-400: #97a1b3;
+  --neutre-500: #6b7589;
+  --neutre-600: #4b5468;
+  --neutre-700: #343b4c;
+  --neutre-800: #1f2433;
+  --neutre-900: #121622;
+  --neutre-950: #0a0d16;
+
+  --bleu-50: #eff3ff;
+  --bleu-100: #dce5ff;
+  --bleu-200: #bacbff;
+  --bleu-400: #6f8fff;
+  --bleu-500: #4a6cfa;
+  --bleu-600: #3451e8;
+  --bleu-700: #2a3fc2;
+
+  --bleu-nuit: #121c34;
+
+  --surface-app: var(--neutre-0);
+  --surface-canevas: var(--neutre-50);
+  --surface-survol: var(--neutre-100);
+  --bordure: var(--neutre-200);
+  --bordure-forte: var(--neutre-300);
+  --texte-principal: var(--neutre-900);
+  --texte-secondaire: var(--neutre-600);
+  --texte-tertiaire: #636c7e;
+  --texte-inverse: var(--neutre-0);
+  --accent-defaut: var(--bleu-600);
+  --accent-survol: var(--bleu-700);
+  --accent-doux: var(--bleu-50);
+  --focus: var(--bleu-500);
+
+  --statut-marche: #16a34a;
+  --statut-marche-fond: #eaf8ef;
+  --statut-marche-texte: #12813b;
+  --statut-pause: #d97706;
+  --statut-pause-fond: #fef5e6;
+  --statut-pause-texte: #92540a;
+  --statut-arrete: #8b94a6;
+  --statut-arrete-fond: #f1f3f7;
+  --statut-arrete-texte: var(--neutre-600);
+  --statut-erreur: #d6363c;
+  --statut-erreur-fond: #fdecec;
+  --statut-erreur-texte: #b42a30;
+  --statut-cours: var(--bleu-600);
+  --statut-cours-fond: var(--bleu-50);
+  --statut-cours-texte: var(--bleu-700);
+
+  --espace-1: 4px;
+  --espace-2: 8px;
+  --espace-3: 12px;
+  --espace-4: 16px;
+  --espace-6: 24px;
+  --espace-8: 32px;
+  --espace-12: 48px;
+  --espace-16: 64px;
+
+  --rayon-bouton: 8px;
+  --rayon-carte: 12px;
+  --rayon-panneau: 16px;
+  --rayon-puce: 999px;
+
+  --ombre-carte: 0 1px 2px rgb(18 22 34 / 6%), 0 1px 3px rgb(18 22 34 / 8%);
+  --ombre-flottant: 0 4px 12px rgb(18 22 34 / 10%);
+  --ombre-panneau: 0 12px 32px rgb(18 22 34 / 16%);
+
+  --police: "Geist Variable", system-ui, sans-serif;
+  --police-mono: "Geist Mono Variable", ui-monospace, monospace;
+}

@@ -1,8 +1,8 @@
 // frontend/vite.config.ts
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
-// En développement, /api est relayé vers GANDAL-AI (backend FastAPI, port 8090)
+// En développement, /api est relayé vers GANDAL-AI (backend FastAPI, port 8090), comme le fait nginx en production
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -12,5 +12,10 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    css: false,
   },
 })

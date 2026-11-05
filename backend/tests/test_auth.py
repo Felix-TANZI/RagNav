@@ -14,8 +14,8 @@ from tests.fakes import ADMIN_EMAIL, ADMIN_PASSWORD, FakeEmbedder
 CLIENT_PASSWORD = "mot-de-passe-client-solide"
 
 
-def register(client, email="client@test.cm", password=CLIENT_PASSWORD):
-    return client.post("/auth/register", json={"email": email, "password": password})
+def register(client, email="client@test.cm", password=CLIENT_PASSWORD, name="Alice"):
+    return client.post("/auth/register", json={"name": name, "email": email, "password": password})
 
 
 def test_premier_admin_cree_une_seule_fois(settings, store, client):
@@ -36,6 +36,7 @@ def test_inscription_client_et_connexion(client):
 def test_inscription_refusee_mot_de_passe_court_ou_adresse_prise(client):
     assert register(client, password="court").status_code == 422
     assert register(client, email="pas-une-adresse").status_code == 422
+    assert register(client, name="").status_code == 422
     assert register(client).status_code == 201
     assert register(client).status_code == 409
 
@@ -117,3 +118,19 @@ def test_limite_de_debit_sur_l_inscription(settings, store):
     with TestClient(create_app(settings, store=store, embedder=FakeEmbedder())) as client:
         codes = [register(client, email=f"c{i}@test.cm").status_code for i in range(3)]
     assert codes == [201, 201, 429]
+
+
+def test_prenom_affiche_et_modifiable(client):
+    register(client, name=" Alice ")
+    headers = login(client, "client@test.cm", CLIENT_PASSWORD)
+    assert client.get("/auth/me", headers=headers).json()["name"] == "Alice"
+    assert client.patch("/auth/me", headers=headers, json={"name": "Alice N."}).json()["name"] == "Alice N."
+    assert client.patch("/auth/me", headers=headers, json={"name": ""}).status_code == 422
+    assert client.get("/auth/me", headers=login(client)).json()["name"] == "Administrateur"
+
+
+def test_chemin_du_cookie_reglable(settings, store):
+    settings.refresh_cookie_path = "/api/auth"
+    with TestClient(create_app(settings, store=store, embedder=FakeEmbedder())) as client:
+        r = client.post("/auth/token", data={"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    assert "path=/api/auth" in r.headers["set-cookie"].lower()

@@ -7,8 +7,8 @@ from tests.fakes import ADMIN_EMAIL
 
 
 def create(client, admin, email, role="client"):
-    r = client.post("/admin/users", headers=admin, json={"email": email, "password": "mot-de-passe-solide",
-                                                          "role": role})
+    r = client.post("/admin/users", headers=admin, json={"name": "Nom", "email": email,
+                                                          "password": "mot-de-passe-solide", "role": role})
     assert r.status_code == 201, r.text
     return r.json()
 

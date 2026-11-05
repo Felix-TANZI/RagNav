@@ -27,12 +27,13 @@ from app.migrate import run_migrations
 from app.models import EventCategory
 from app.rag import Assistant
 from app.ratelimit import RateLimiter
-from app.routers import auth, chat, documents, events, service_keys, users
+from app.routers import auth, chat, documents, events, library, service_keys, users
 from app.store import VectorStore
 from app.worker import IndexWorker
 
 TAGS = [
     {"name": "Assistant", "description": "Questions sur le projet GANDAL, réponses citant leurs sources"},
+    {"name": "Documentation", "description": "Documents du corpus consultables, pour vérifier une source"},
     {"name": "Supervision", "description": "État du service et de ses dépendances"},
     {"name": "Authentification", "description": "Inscription des clients, connexion, session et mot de passe"},
     {"name": "Comptes", "description": "Gestion des comptes par les admins"},
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None, *, store: VectorStore | None = 
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,
                        allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Request-ID"])
     app.add_api_route("/health", health, methods=["GET"], tags=["Supervision"], summary="État du service")
-    for router in (chat.router, auth.router, users.router, service_keys.router, documents.router, events.router):
+    for router in (chat.router, library.router, auth.router, users.router, service_keys.router, documents.router,
+                   events.router):
         app.include_router(router)
     return app
