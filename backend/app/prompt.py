@@ -24,7 +24,7 @@ _CITATION = re.compile(r"\[(\d{1,3})\]")
 _SPACES_BEFORE_PUNCT = re.compile(r"\s+([.,;:!?])")
 
 
-def _location(hit: Hit) -> str:
+def location(hit: Hit) -> str:
     p = hit.payload
     parts = [p.get("title") or p.get("document", ""), p.get("section_path") or p.get("section", "")]
     if p.get("page"):
@@ -33,7 +33,7 @@ def _location(hit: Hit) -> str:
 
 
 def build_messages(question: str, hits: list[Hit]) -> list[dict]:
-    extracts = "\n\n".join(f"[{i}] {_location(h)}\n{h.payload.get('text', '')}" for i, h in enumerate(hits, 1))
+    extracts = "\n\n".join(f"[{i}] {location(h)}\n{h.payload.get('text', '')}" for i, h in enumerate(hits, 1))
     user = f"Extraits de la documentation\n\n{extracts}\n\nQuestion\n{question}"
     return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
 

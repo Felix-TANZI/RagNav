@@ -1,13 +1,19 @@
 # backend/app/store.py
-# Index Qdrant, une collection par corpus (ENF6), vecteur dense nommé pour ajouter BM25 sans tout reconstruire
+# Index Qdrant, une collection par corpus (ENF6), vecteur dense et vecteur creux BM25 par passage
+import math
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
 from qdrant_client import models as qm
+from qdrant_client.http.exceptions import ApiException
 
+from app import keywords
 from app.config import Settings
 
 DENSE = "dense"
+KEYWORDS = "mots"
 KEYWORD_FIELDS = ("document_id", "content_hash")
 
 
@@ -26,6 +32,19 @@ def _match(field: str, value: str) -> qm.FieldCondition:
     return qm.FieldCondition(key=field, match=qm.MatchValue(value=value))
 
 
+def _cosine(a: list[float], b: list[float]) -> float:
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return sum(x * y for x, y in zip(a, b, strict=True)) / norm if norm else 0.0
+
+
+@contextmanager
+def _qdrant(action: str) -> Iterator[None]:
+    try:
+        yield
+    except ApiException as e:
+        raise StoreError(f"Qdrant injoignable ou en erreur pendant {action}, {e}") from e
+
+
 class VectorStore:
     def __init__(self, client: QdrantClient, payload_indexes: bool = True):
         self.client = client
@@ -36,7 +55,8 @@ class VectorStore:
         return cls(QdrantClient(url=settings.qdrant_url, timeout=int(settings.qdrant_timeout)))
 
     def exists(self, corpus: str) -> bool:
-        return self.client.collection_exists(corpus)
+        with _qdrant("la lecture des collections"):
+            return self.client.collection_exists(corpus)
 
     def ensure_collection(self, corpus: str, dim: int, embed_model: str) -> None:
         if self.exists(corpus):
@@ -45,17 +65,22 @@ class VectorStore:
             self.client.create_collection(
                 corpus,
                 vectors_config={DENSE: qm.VectorParams(size=dim, distance=qm.Distance.COSINE)},
-                metadata={"embed_model": embed_model, "dim": dim},
+                sparse_vectors_config={KEYWORDS: qm.SparseVectorParams(modifier=qm.Modifier.IDF)},
+                metadata={"embed_model": embed_model, "dim": dim, "keywords": keywords.VERSION},
             )
         if self.payload_indexes:
             for field in KEYWORD_FIELDS:
                 self.client.create_payload_index(corpus, field, qm.PayloadSchemaType.KEYWORD)
 
     def check_model(self, corpus: str, embed_model: str, dim: int | None = None) -> None:
-        metadata = self.client.get_collection(corpus).config.metadata or {}
+        with _qdrant(f"la lecture de la collection {corpus}"):
+            metadata = self.client.get_collection(corpus).config.metadata or {}
         if metadata.get("embed_model") != embed_model or (dim is not None and metadata.get("dim") != dim):
             raise StoreError(f"la collection {corpus} a été indexée avec {metadata.get('embed_model')} "
                              f"({metadata.get('dim')} dimensions), réindexer avec --reset pour passer à {embed_model}")
+        if metadata.get("keywords") != keywords.VERSION:
+            raise StoreError(f"la collection {corpus} n'a pas l'index par mots-clés version {keywords.VERSION}, "
+                             "réindexer avec scripts.ingest --reset")
 
     def drop(self, corpus: str) -> None:
         if self.exists(corpus):
@@ -90,5 +115,15 @@ class VectorStore:
     def search(self, corpus: str, vector: list[float], limit: int) -> list[Hit]:
         if not self.exists(corpus):
             raise StoreError(f"le corpus {corpus} n'est pas indexé")
-        result = self.client.query_points(corpus, query=vector, using=DENSE, limit=limit, with_payload=True)
+        with _qdrant("la recherche"):
+            result = self.client.query_points(corpus, query=vector, using=DENSE, limit=limit, with_payload=True)
         return [Hit(str(p.id), p.score, p.payload or {}) for p in result.points]
+
+    def search_keywords(self, corpus: str, question: str, vector: list[float], limit: int) -> list[Hit]:
+        sparse = keywords.query_vector(question)
+        if sparse is None or not self.exists(corpus):
+            return []
+        with _qdrant("la recherche par mots-clés"):
+            result = self.client.query_points(corpus, query=sparse, using=KEYWORDS, limit=limit, with_payload=True,
+                                              with_vectors=[DENSE])
+        return [Hit(str(p.id), _cosine(vector, p.vector[DENSE]), p.payload or {}) for p in result.points]

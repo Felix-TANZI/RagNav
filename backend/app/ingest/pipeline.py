@@ -14,9 +14,10 @@ from app.embeddings import Embedder
 from app.ingest.base import ConversionError, ConvertOptions
 from app.ingest.chunker import Chunk, chunk_document
 from app.ingest.convert import convert
-from app.store import DENSE, VectorStore
+from app.keywords import passage_vector
+from app.store import DENSE, KEYWORDS, VectorStore
 
-PIPELINE_VERSION = "2"
+PIPELINE_VERSION = "3"
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,7 @@ def embedding_text(doc: DocumentSource, chunk: Chunk) -> str:
 def _point(doc: DocumentSource, chunk: Chunk, digest: str, vector: list[float], ocr: bool) -> qm.PointStruct:
     return qm.PointStruct(
         id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"gandal://{doc.id}#{digest}#{chunk.index}")),
-        vector={DENSE: vector},
+        vector={DENSE: vector, KEYWORDS: passage_vector(embedding_text(doc, chunk))},
         payload={
             "document_id": doc.id, "document": doc.filename, "title": doc.title, "source": doc.source,
             "version": doc.version, "date": doc.date.isoformat(), "section": chunk.section,

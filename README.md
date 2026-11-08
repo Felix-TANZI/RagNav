@@ -15,7 +15,7 @@ Auteurs Felix NZIKO, Atchine Hanniel. Référence de conception le Chapitre 2 va
 | Embeddings | bge-m3 (multilingue, 1024 dimensions) servi par Ollama |
 | Génération | qwen3:4b-instruct-2507 via Ollama sur le PC, via LiteLLM (EMILIA:4000) sur GANDAL |
 | Index vectoriel | Qdrant 1.19.2, une collection par corpus (`navigation`) |
-| Recherche par mots-clés | BM25 natif Qdrant, prévu pour l'architecture B si l'évaluation le justifie |
+| Recherche par mots-clés | BM25, vecteur creux par passage dans Qdrant (IDF calculé par Qdrant), fusion RRF avec la recherche dense |
 | Interface | React 19 + TypeScript (Vite), servie par nginx sur le port 8080, espace client et espace admin |
 
 Les modèles sont appelés par l'API compatible OpenAI, la même pour Ollama et LiteLLM. Passer du PC à GANDAL
@@ -33,6 +33,7 @@ Aucun secret n'est écrit dans le code. Les clés n'ont pas de valeur par défau
 | `frontend/` | Interface React (client et admin), tests Vitest, Dockerfile et configuration nginx |
 | `corpus/` | Documents indexés et leur liste `inventaire.csv`, `corpus/test/` contient le corpus de test fictif |
 | `eval/questions.jsonl` | Jeu de questions d'évaluation (réponse attendue, document, section) |
+| `docs/runbook.md` | Exploitation sur la VM150 : installation, mise à jour, sauvegarde, pannes courantes |
 | `docker-compose.yml` | Qdrant, backend et interface (VM150), `docker-compose.dev.yml` adapte au PC |
 
 ## Corpus
@@ -110,8 +111,13 @@ Documentation de l'API sur <http://127.0.0.1:8090/docs>.
 ## Index
 
 Les passages sont vectorisés par bge-m3 et rangés dans la collection Qdrant `navigation` (vecteur nommé `dense`,
-distance cosinus). Chaque passage garde document, titre, source, version, date, section, chemin des titres, page
+distance cosinus). Chaque passage reçoit aussi un vecteur creux BM25 (`mots`) : les mots sont mis en minuscules,
+sans accents ni mots vides, et les identifiants techniques restent entiers (`10.10.40.30`, `dcgm-exporter`,
+`/mnt/projets`). Chaque passage garde document, titre, source, version, date, section, chemin des titres, page
 et texte. Le texte vectorisé est précédé du titre du document et du chemin des sections.
+
+Une collection créée avant l'index par mots-clés est signalée au démarrage dans le journal, `scripts.ingest --reset`
+la reconstruit.
 
 Les documents sont gérés par l'espace admin (API `/admin/documents`) et indexés en arrière-plan par une file à un
 seul fil. Seuls les documents nouveaux ou modifiés sont recalculés : l'empreinte d'un document couvre son contenu,
@@ -124,10 +130,20 @@ cd backend
 .\.venv\Scripts\python.exe -m scripts.ingest             # indexe les documents de la base
 .\.venv\Scripts\python.exe -m scripts.ingest --force     # recalcule tout
 .\.venv\Scripts\python.exe -m scripts.ingest --reset     # supprime la collection puis réindexe (changement de modèle)
-.\.venv\Scripts\python.exe -m scripts.eval_retrieval     # rappel@k sur eval/questions.jsonl
+.\.venv\Scripts\python.exe -m scripts.eval_retrieval              # rappel@k sur eval/questions.jsonl
+.\.venv\Scripts\python.exe -m scripts.eval_retrieval --mode dense # même mesure sans les mots-clés
 ```
 
-Sur le corpus de test, avec 5 passages retrouvés : rappel@1 70 %, rappel@3 95 %, rappel@5 100 %, MRR 0,835.
+Sur le corpus de test (40 questions avec réponse), en comptant seulement les passages réellement donnés au modèle :
+
+| Recherche | Rappel@1 | Rappel@3 | Rappel@5 | MRR |
+| --- | --- | --- | --- | --- |
+| dense | 75 % | 92 % | 95 % | 0,844 |
+| hybride | 80 % | 100 % | 100 % | 0,896 |
+
+En recherche dense, une question avec une faute de frappe (« prometeus ») et une question sur un nom exact (« CT310 »)
+trouvaient le bon passage mais sous le seuil de similarité, l'assistant aurait refusé. La recherche hybride les
+retrouve.
 
 ## Assistant, route /chat
 
@@ -135,9 +151,9 @@ Sur le corpus de test, avec 5 passages retrouvés : rappel@1 70 %, rappel@3 95 %
 `sources` (document, titre, section, page, version, score). La source n correspond à la citation [n] de la réponse.
 Accès avec un compte (client ou admin) ou une clé de service dans l'en-tête `X-API-Key`.
 
-Déroulement (Chapitre 2, section 3.3) : la question est vectorisée, les 5 passages les plus proches sont retrouvés,
-ceux sous le seuil `MIN_SCORE` (0,40) sont écartés. S'il n'en reste aucun, l'assistant refuse sans appeler le
-modèle. Sinon le modèle reçoit les extraits numérotés et la consigne de citer, de ne rien inventer et de répondre
+Déroulement (Chapitre 2, section 3.3) : la question est vectorisée, les passages proches par le sens sous le seuil
+`MIN_SCORE` (0,40) sont écartés, ceux qui partagent des mots avec la question sont gardés, et la fusion par rang
+réciproque (RRF) en retient 5. S'il n'en reste aucun, l'assistant refuse sans appeler le modèle. Sinon le modèle reçoit les extraits numérotés et la consigne de citer, de ne rien inventer et de répondre
 « Je ne trouve pas cette information dans la documentation GANDAL. » si les extraits ne suffisent pas. Les
 citations sont ensuite vérifiées et renumérotées, une citation inventée est retirée.
 
@@ -221,6 +237,8 @@ accord avec la base utilisée. Lancer les commandes `docker compose exec` depuis
 `/corpus` en chemin Windows.
 
 ## Déployer sur la VM150
+
+Procédure complète, sauvegarde et pannes courantes dans [docs/runbook.md](docs/runbook.md).
 
 ```bash
 cp backend/.env.example backend/.env   # LLM_BASE_URL=http://EMILIA:4000/v1, clé et noms de modèles LiteLLM

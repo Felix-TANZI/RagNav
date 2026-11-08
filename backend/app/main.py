@@ -28,7 +28,7 @@ from app.models import EventCategory
 from app.rag import Assistant
 from app.ratelimit import RateLimiter
 from app.routers import auth, chat, documents, events, library, service_keys, users
-from app.store import VectorStore
+from app.store import StoreError, VectorStore
 from app.worker import IndexWorker
 
 TAGS = [
@@ -85,6 +85,11 @@ def create_app(settings: Settings | None = None, *, store: VectorStore | None = 
         app.state.worker = worker = IndexWorker(sessions, settings, app.state.embedder, app.state.store, event_log)
         worker.start()
         event_log.info(EventCategory.SYSTEME, "demarrage", f"GANDAL-AI {__version__} démarré")
+        try:
+            if app.state.store.exists(settings.default_corpus):
+                app.state.store.check_model(settings.default_corpus, settings.embed_model)
+        except StoreError as e:
+            event_log.error(EventCategory.INDEXATION, "index_a_verifier", f"Index à vérifier au démarrage, {e}")
         worker.recover()
         yield
         worker.stop()

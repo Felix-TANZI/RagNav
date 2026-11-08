@@ -1,6 +1,7 @@
 # backend/app/config.py
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import EmailStr, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
     default_corpus: str = "navigation"
     top_k: int = Field(default=5, ge=1, le=20)
     min_score: float = Field(default=0.40, ge=0, le=1)
+    retrieval_mode: Literal["hybride", "dense"] = "hybride"
     temperature: float = Field(default=0.0, ge=0, le=2)
     max_tokens: int = Field(default=512, ge=32)
     llm_timeout: float = Field(default=300.0, gt=0)
